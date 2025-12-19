@@ -50,3 +50,61 @@ st.dataframe(
     df.style.map(bg_color, subset=["% Change"]),
     use_container_width=True
 )
+
+
+# ==============================
+# 📰 MARKET MOVING NEWS SECTION
+# ==============================
+import feedparser
+
+st.markdown("---")
+st.subheader("📰 Market Moving News")
+
+ist = pytz.timezone("Asia/Kolkata")
+
+news_feeds = {
+    "Stock Market": "https://news.google.com/rss/search?q=stock+market",
+    "India Market": "https://news.google.com/rss/search?q=india+stock+market+nifty",
+    "Global Markets": "https://news.google.com/rss/search?q=global+markets+stocks",
+    "Central Banks": "https://news.google.com/rss/search?q=RBI+Federal+Reserve+interest+rates",
+    "Commodities": "https://news.google.com/rss/search?q=crude+oil+gold+markets"
+}
+
+rows = []
+
+for category, url in news_feeds.items():
+    feed = feedparser.parse(url)
+    for entry in feed.entries[:8]:
+        try:
+            published_dt = datetime(
+                *entry.published_parsed[:6],
+                tzinfo=pytz.utc
+            ).astimezone(ist)
+        except:
+            continue
+
+        rows.append([
+            category,
+            entry.title,
+            published_dt,
+            entry.link
+        ])
+
+df_news = pd.DataFrame(
+    rows,
+    columns=["Category", "Headline", "Published_dt", "Link"]
+)
+
+if not df_news.empty:
+    df_news = df_news.sort_values("Published_dt", ascending=False)
+    df_news.insert(0, "S.No", range(1, len(df_news) + 1))
+    df_news["Published (IST)"] = df_news["Published_dt"].dt.strftime("%d-%b-%Y %I:%M %p IST")
+    df_news["Link"] = df_news["Link"].apply(lambda x: f"[Open]({x})")
+
+    st.dataframe(
+        df_news[["S.No", "Category", "Headline", "Published (IST)", "Link"]],
+        use_container_width=True,
+        hide_index=True
+    )
+else:
+    st.info("No market news available currently.")
