@@ -1,15 +1,47 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import feedparser
 from datetime import datetime
 import pytz
+import time
+import random
 
-st.set_page_config(layout="wide")
-st.title("📊 NIFTY Pre-Market Radar")
+# -------------------------------------------------
+# STREAMLIT CONFIG
+# -------------------------------------------------
+st.set_page_config(
+    page_title="Capital Market Pulse",
+    layout="wide"
+)
 
-# IST timestamp
+st.title("📊 Capital Market Pulse")
+st.caption("Global markets • India bias • Intraday readiness")
+
+# IST timezone
 ist = pytz.timezone("Asia/Kolkata")
-st.caption(f"Last updated: {datetime.now(ist).strftime('%d-%b-%Y %I:%M %p IST')}")
+
+st.markdown(
+    f"🕒 **Last updated:** {datetime.now(ist).strftime('%d-%b-%Y %I:%M %p IST')}"
+)
+
+# -------------------------------------------------
+# MARKET DATA (WITH CACHING TO AVOID RATE LIMIT)
+# -------------------------------------------------
+@st.cache_data(ttl=600)  # cache for 10 minutes
+def fetch_market_data(symbol):
+    ticker = yf.Ticker(symbol)
+    hist = ticker.history(period="2d")
+
+    if len(hist) < 2:
+        return None
+
+    prev = hist["Close"].iloc[-2]
+    curr = hist["Close"].iloc[-1]
+    pct = ((curr / prev) - 1) * 100
+
+    return round(curr, 2), round(prev, 2), round(pct, 2)
+
 
 symbols = {
     "NIFTY 50": "^NSEI",
@@ -24,43 +56,51 @@ symbols = {
     "FTSE 100": "^FTSE",
     "USDINR": "USDINR=X",
     "Gold": "GC=F",
-    "Crude": "CL=F"
+    "Crude Oil": "CL=F"
 }
 
-rows = []
+market_rows = []
+
 for name, symbol in symbols.items():
-    hist = yf.Ticker(symbol).history(period="2d")
-    if len(hist) >= 2:
-        prev = hist["Close"].iloc[-2]
-        curr = hist["Close"].iloc[-1]
-        chg = ((curr / prev) - 1) * 100
-        rows.append([name, round(curr,2), round(prev,2), round(chg,2)])
+    try:
+        data = fetch_market_data(symbol)
+        if data:
+            market_rows.append([name, data[0], data[1], data[2]])
+        time.sleep(random.uniform(0.3, 0.8))  # soft delay
+    except Exception:
+        continue
 
-df = pd.DataFrame(rows, columns=["Market", "CMP", "Prev Close", "% Change"])
+st.subheader("🌍 Global & India Market Snapshot")
 
-def bg_color(val):
-    if val > 0:
-        return "background-color: #e6f4ea; font-weight: bold"
-    elif val < 0:
-        return "background-color: #fdecea; font-weight: bold"
-    else:
-        return "background-color: #f2f2f2"
+if market_rows:
+    market_df = pd.DataFrame(
+        market_rows,
+        columns=["Market", "CMP", "Previous Close", "% Change"]
+    )
 
-st.dataframe(
-    df.style.map(bg_color, subset=["% Change"]),
-    use_container_width=True
-)
+    def bg(val):
+        if val > 0:
+            return "background-color: #e6f4ea; font-weight: bold"
+        elif val < 0:
+            return "background-color: #fdecea; font-weight: bold"
+        return ""
 
+    st.dataframe(
+        market_df.style.map(bg, subset=["% Change"]),
+        use_container_width=True,
+        hide_index=True
+    )
+else:
+    st.warning(
+        "⚠️ Market data temporarily unavailable (Yahoo rate limit). "
+        "Please refresh after some time."
+    )
 
-# ==============================
-# 📰 MARKET MOVING NEWS SECTION
-# ==============================
-import feedparser
-
+# -------------------------------------------------
+# MARKET MOVING NEWS
+# -------------------------------------------------
 st.markdown("---")
 st.subheader("📰 Market Moving News")
-
-ist = pytz.timezone("Asia/Kolkata")
 
 news_feeds = {
     "Stock Market": "https://news.google.com/rss/search?q=stock+market",
@@ -70,11 +110,12 @@ news_feeds = {
     "Commodities": "https://news.google.com/rss/search?q=crude+oil+gold+markets"
 }
 
-rows = []
+news_rows = []
 
 for category, url in news_feeds.items():
     feed = feedparser.parse(url)
-    for entry in feed.entries[:8]:
+
+    for entry in feed.entries[:6]:
         try:
             published_dt = datetime(
                 *entry.published_parsed[:6],
@@ -83,28 +124,39 @@ for category, url in news_feeds.items():
         except:
             continue
 
-        rows.append([
+        news_rows.append([
             category,
             entry.title,
             published_dt,
             entry.link
         ])
 
-df_news = pd.DataFrame(
-    rows,
+news_df = pd.DataFrame(
+    news_rows,
     columns=["Category", "Headline", "Published_dt", "Link"]
 )
 
-if not df_news.empty:
-    df_news = df_news.sort_values("Published_dt", ascending=False)
-    df_news.insert(0, "S.No", range(1, len(df_news) + 1))
-    df_news["Published (IST)"] = df_news["Published_dt"].dt.strftime("%d-%b-%Y %I:%M %p IST")
-    df_news["Link"] = df_news["Link"].apply(lambda x: f"[Open]({x})")
+if not news_df.empty:
+    news_df = news_df.sort_values("Published_dt", ascending=False)
+    news_df.insert(0, "S.No", range(1, len(news_df) + 1))
+    news_df["Published (IST)"] = news_df["Published_dt"].dt.strftime(
+        "%d-%b-%Y %I:%M %p IST"
+    )
+    news_df["Link"] = news_df["Link"].apply(lambda x: f"[Open]({x})")
 
     st.dataframe(
-        df_news[["S.No", "Category", "Headline", "Published (IST)", "Link"]],
+        news_df[["S.No", "Category", "Headline", "Published (IST)", "Link"]],
         use_container_width=True,
         hide_index=True
     )
 else:
     st.info("No market news available currently.")
+
+# -------------------------------------------------
+# FOOTER
+# -------------------------------------------------
+st.markdown("---")
+st.caption(
+    "📌 Note: Market data is fetched from public sources and may be delayed. "
+    "For personal analysis only."
+)
