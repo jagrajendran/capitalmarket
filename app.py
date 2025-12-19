@@ -20,13 +20,12 @@ st.caption("Global markets • India bias • Intraday readiness")
 
 # IST timezone
 ist = pytz.timezone("Asia/Kolkata")
-
 st.markdown(
     f"🕒 **Last updated:** {datetime.now(ist).strftime('%d-%b-%Y %I:%M %p IST')}"
 )
 
 # -------------------------------------------------
-# MARKET DATA (WITH CACHING TO AVOID RATE LIMIT)
+# MARKET DATA (RATE-LIMIT SAFE)
 # -------------------------------------------------
 @st.cache_data(ttl=600)  # cache for 10 minutes
 def fetch_market_data(symbol):
@@ -66,7 +65,7 @@ for name, symbol in symbols.items():
         data = fetch_market_data(symbol)
         if data:
             market_rows.append([name, data[0], data[1], data[2]])
-        time.sleep(random.uniform(0.3, 0.8))  # soft delay
+        time.sleep(random.uniform(0.3, 0.8))
     except Exception:
         continue
 
@@ -91,16 +90,20 @@ if market_rows:
         hide_index=True
     )
 else:
-    st.warning(
-        "⚠️ Market data temporarily unavailable (Yahoo rate limit). "
-        "Please refresh after some time."
-    )
+    st.warning("⚠️ Market data temporarily unavailable (Yahoo rate limit).")
 
 # -------------------------------------------------
-# MARKET MOVING NEWS (WITH CLICKABLE LINKS)
+# MARKET MOVING NEWS (HIGH IMPACT + BREAKING)
 # -------------------------------------------------
 st.markdown("---")
 st.subheader("📰 Market Moving News")
+
+# HIGH IMPACT keywords
+HIGH_IMPACT_KEYWORDS = [
+    "rbi", "fed", "interest rate", "rate hike", "rate cut",
+    "inflation", "cpi", "recession", "crash", "selloff",
+    "war", "geopolitical", "banking", "default", "liquidity"
+]
 
 news_feeds = {
     "Stock Market": "https://news.google.com/rss/search?q=stock+market",
@@ -115,7 +118,7 @@ news_rows = []
 for category, url in news_feeds.items():
     feed = feedparser.parse(url)
 
-    for entry in feed.entries[:6]:
+    for entry in feed.entries[:8]:
         try:
             published_dt = datetime(
                 *entry.published_parsed[:6],
@@ -124,27 +127,54 @@ for category, url in news_feeds.items():
         except:
             continue
 
+        headline_lower = entry.title.lower()
+        impact = "HIGH" if any(k in headline_lower for k in HIGH_IMPACT_KEYWORDS) else "NORMAL"
+
         news_rows.append({
             "Category": category,
             "Headline": entry.title,
-            "Published (IST)": published_dt.strftime("%d-%b-%Y %I:%M %p IST"),
+            "Impact": impact,
+            "Published_dt": published_dt,
             "Link": entry.link
         })
 
 news_df = pd.DataFrame(news_rows)
 
 if not news_df.empty:
+    # Sort by latest
+    news_df = news_df.sort_values("Published_dt", ascending=False)
+
+    # -----------------------------
+    # 🚨 BREAKING NEWS (PINNED)
+    # -----------------------------
+    breaking_df = news_df[news_df["Impact"] == "HIGH"].head(3)
+
+    if not breaking_df.empty:
+        st.markdown("### 🚨 Breaking / High Impact News")
+        for _, row in breaking_df.iterrows():
+            st.error(
+                f"**{row['Headline']}**\n\n"
+                f"🕒 {row['Published_dt'].strftime('%d-%b-%Y %I:%M %p IST')}\n\n"
+                f"[Read more]({row['Link']})"
+            )
+
+    st.markdown("---")
+
+    # -----------------------------
+    # FULL NEWS TABLE
+    # -----------------------------
     news_df.insert(0, "S.No", range(1, len(news_df) + 1))
+    news_df["Published (IST)"] = news_df["Published_dt"].dt.strftime(
+        "%d-%b-%Y %I:%M %p IST"
+    )
 
     st.dataframe(
-        news_df,
+        news_df[["S.No", "Category", "Impact", "Headline", "Published (IST)", "Link"]],
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Link": st.column_config.LinkColumn(
-                "Link",
-                display_text="Open"
-            )
+            "Link": st.column_config.LinkColumn("Link", display_text="Open"),
+            "Impact": st.column_config.TextColumn("Impact")
         }
     )
 else:
@@ -155,6 +185,6 @@ else:
 # -------------------------------------------------
 st.markdown("---")
 st.caption(
-    "📌 Note: Market data is fetched from public sources and may be delayed. "
-    "For personal analysis only."
+    "📌 Educational dashboard only. Market data and news may be delayed. "
+    "Not investment advice."
 )
