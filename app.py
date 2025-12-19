@@ -97,7 +97,7 @@ else:
     )
 
 # -------------------------------------------------
-# MARKET MOVING NEWS
+# MARKET MOVING NEWS (WITH CLICKABLE LINKS)
 # -------------------------------------------------
 st.markdown("---")
 st.subheader("📰 Market Moving News")
@@ -124,30 +124,28 @@ for category, url in news_feeds.items():
         except:
             continue
 
-        news_rows.append([
-            category,
-            entry.title,
-            published_dt,
-            entry.link
-        ])
+        news_rows.append({
+            "Category": category,
+            "Headline": entry.title,
+            "Published (IST)": published_dt.strftime("%d-%b-%Y %I:%M %p IST"),
+            "Link": entry.link
+        })
 
-news_df = pd.DataFrame(
-    news_rows,
-    columns=["Category", "Headline", "Published_dt", "Link"]
-)
+news_df = pd.DataFrame(news_rows)
 
 if not news_df.empty:
-    news_df = news_df.sort_values("Published_dt", ascending=False)
     news_df.insert(0, "S.No", range(1, len(news_df) + 1))
-    news_df["Published (IST)"] = news_df["Published_dt"].dt.strftime(
-        "%d-%b-%Y %I:%M %p IST"
-    )
-    news_df["Link"] = news_df["Link"].apply(lambda x: f"[Open]({x})")
 
     st.dataframe(
-        news_df[["S.No", "Category", "Headline", "Published (IST)", "Link"]],
+        news_df,
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        column_config={
+            "Link": st.column_config.LinkColumn(
+                "Link",
+                display_text="Open"
+            )
+        }
     )
 else:
     st.info("No market news available currently.")
