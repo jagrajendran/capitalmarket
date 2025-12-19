@@ -5,7 +5,7 @@ from datetime import datetime
 import pytz
 
 st.set_page_config(layout="wide")
-st.title("📊 Capital Market Dashboard")
+st.title("📊 NIFTY Pre-Market Radar")
 
 # IST timestamp
 ist = pytz.timezone("Asia/Kolkata")
