@@ -15,12 +15,12 @@ st.set_page_config(page_title="Capital Market Pulse", layout="wide")
 st.title("📊 Capital Market Pulse")
 st.caption("Global markets • India bias • Intraday readiness")
 
-# IST time
+# IST Time
 ist = pytz.timezone("Asia/Kolkata")
 st.markdown(f"🕒 **Last updated:** {datetime.now(ist).strftime('%d-%b-%Y %I:%M %p IST')}")
 
 # -------------------------------------------------
-# MARKET DATA (RATE LIMIT SAFE)
+# COMMON FUNCTIONS
 # -------------------------------------------------
 @st.cache_data(ttl=600)
 def fetch_market_data(symbol):
@@ -34,10 +34,28 @@ def fetch_market_data(symbol):
     return round(curr, 2), round(prev, 2), round(pct, 2)
 
 
+def format_change(val):
+    if val > 0:
+        return f"▲ {val:.2f}%"
+    elif val < 0:
+        return f"▼ {val:.2f}%"
+    return f"{val:.2f}%"
+
+
+def bg_change(val):
+    if "▲" in val:
+        return "background-color:#e6f4ea;color:#137333;font-weight:bold"
+    elif "▼" in val:
+        return "background-color:#fdecea;color:#a50e0e;font-weight:bold"
+    return ""
+
+# -------------------------------------------------
+# GLOBAL & INDIA INDICES
+# -------------------------------------------------
 symbols = {
     "NIFTY 50": "^NSEI",
     "BANKNIFTY": "^NSEBANK",
-    "SENSEX": "^BSESN", 
+    "SENSEX": "^BSESN",
     "India VIX": "^INDIAVIX",
     "S&P 500": "^GSPC",
     "NASDAQ": "^IXIC",
@@ -58,8 +76,8 @@ for name, symbol in symbols.items():
         data = fetch_market_data(symbol)
         if data:
             market_rows.append([name, data[0], data[1], data[2]])
-        time.sleep(random.uniform(0.3, 0.7))
-    except Exception:
+        time.sleep(random.uniform(0.3, 0.6))
+    except:
         continue
 
 st.subheader("🌍 Global & India Market Snapshot")
@@ -68,41 +86,97 @@ if market_rows:
     market_df = pd.DataFrame(
         market_rows, columns=["Market", "CMP", "Previous Close", "% Change"]
     )
-
-    # 🔥 Arrow formatting
-    def format_change(val):
-        if val > 0:
-            return f"▲ {val:.2f}%"
-        elif val < 0:
-            return f"▼ {val:.2f}%"
-        return f"{val:.2f}%"
-
     market_df["% Change"] = market_df["% Change"].apply(format_change)
-
-    # 🎨 Conditional background
-    def bg_change(val):
-        if "▲" in val:
-            return "background-color:#e6f4ea;color:#137333;font-weight:bold"
-        elif "▼" in val:
-            return "background-color:#fdecea;color:#a50e0e;font-weight:bold"
-        return ""
 
     st.dataframe(
         market_df.style.map(bg_change, subset=["% Change"]),
         use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Market": st.column_config.TextColumn("Market", width="medium"),
-            "CMP": st.column_config.NumberColumn("CMP", format="%.2f", width="small"),
-            "Previous Close": st.column_config.NumberColumn("Prev Close", format="%.2f", width="small"),
-            "% Change": st.column_config.TextColumn("% Change", width="small"),
-        },
+        hide_index=True
     )
 else:
-    st.warning("⚠️ Market data temporarily unavailable.")
+    st.warning("Market data unavailable")
 
 # -------------------------------------------------
-# MARKET MOVING NEWS (HIGH IMPACT + BREAKING)
+# NIFTY SECTOR DATA
+# -------------------------------------------------
+st.markdown("---")
+st.subheader("🏭 NIFTY Sector Performance")
+
+nifty_sectors = {
+    "NIFTY IT": "^CNXIT",
+    "NIFTY BANK": "^NSEBANK",
+    "NIFTY FMCG": "^CNXFMCG",
+    "NIFTY PHARMA": "^CNXPHARMA",
+    "NIFTY METAL": "^CNXMETAL",
+    "NIFTY AUTO": "^CNXAUTO",
+    "NIFTY REALTY": "^CNXREALTY",
+    "NIFTY ENERGY": "^CNXENERGY",
+    "NIFTY PSU BANK": "^CNXPSUBANK",
+    "NIFTY FIN SERVICE": "^CNXFIN"
+}
+
+nifty_rows = []
+
+for name, symbol in nifty_sectors.items():
+    data = fetch_market_data(symbol)
+    if data:
+        nifty_rows.append([name, data[0], data[1], data[2]])
+
+if nifty_rows:
+    nifty_df = pd.DataFrame(
+        nifty_rows, columns=["Sector", "CMP", "Previous Close", "% Change"]
+    )
+    nifty_df["% Change"] = nifty_df["% Change"].apply(format_change)
+
+    st.dataframe(
+        nifty_df.style.map(bg_change, subset=["% Change"]),
+        use_container_width=True,
+        hide_index=True
+    )
+else:
+    st.warning("NIFTY sector data unavailable")
+
+# -------------------------------------------------
+# SENSEX SECTOR DATA
+# -------------------------------------------------
+st.markdown("---")
+st.subheader("🏭 SENSEX Sector Performance")
+
+sensex_sectors = {
+    "BSE IT": "^BSEIT",
+    "BSE BANKEX": "^BSEBANKEX",
+    "BSE FMCG": "^BSEFMCG",
+    "BSE PHARMA": "^BSEPHARMA",
+    "BSE METAL": "^BSEMETAL",
+    "BSE AUTO": "^BSEAUTO",
+    "BSE REALTY": "^BSEREALTY",
+    "BSE POWER": "^BSEPOWER",
+    "BSE CAPITAL GOODS": "^BSECAP"
+}
+
+sensex_rows = []
+
+for name, symbol in sensex_sectors.items():
+    data = fetch_market_data(symbol)
+    if data:
+        sensex_rows.append([name, data[0], data[1], data[2]])
+
+if sensex_rows:
+    sensex_df = pd.DataFrame(
+        sensex_rows, columns=["Sector", "CMP", "Previous Close", "% Change"]
+    )
+    sensex_df["% Change"] = sensex_df["% Change"].apply(format_change)
+
+    st.dataframe(
+        sensex_df.style.map(bg_change, subset=["% Change"]),
+        use_container_width=True,
+        hide_index=True
+    )
+else:
+    st.warning("SENSEX sector data unavailable")
+
+# -------------------------------------------------
+# MARKET MOVING NEWS
 # -------------------------------------------------
 st.markdown("---")
 st.subheader("📰 Market Moving News")
@@ -113,9 +187,8 @@ HIGH_IMPACT_KEYWORDS = [
 ]
 
 news_feeds = {
-    "Stock Market": "https://news.google.com/rss/search?q=stock+market",
     "India Market": "https://news.google.com/rss/search?q=india+stock+market+nifty",
-    "Global Markets": "https://news.google.com/rss/search?q=global+markets+stocks",
+    "Global Markets": "https://news.google.com/rss/search?q=global+stock+markets"
 }
 
 news_rows = []
@@ -138,36 +211,17 @@ for category, url in news_feeds.items():
 
         news_rows.append({
             "Category": category,
-            "Headline": entry.title,
             "Impact": impact,
-            "Published_dt": published_dt,
+            "Headline": entry.title,
+            "Published": published_dt.strftime("%d-%b-%Y %I:%M %p IST"),
             "Link": entry.link
         })
 
 news_df = pd.DataFrame(news_rows)
 
 if not news_df.empty:
-    news_df = news_df.sort_values("Published_dt", ascending=False)
-
-    # 🚨 Breaking News
-    breaking_df = news_df[news_df["Impact"] == "HIGH"].head(3)
-
-    if not breaking_df.empty:
-        st.markdown("### 🚨 Breaking / High Impact News")
-        for _, row in breaking_df.iterrows():
-            st.error(
-                f"**{row['Headline']}**\n\n"
-                f"🕒 {row['Published_dt'].strftime('%d-%b-%Y %I:%M %p IST')}\n\n"
-                f"[Read more]({row['Link']})"
-            )
-
-    st.markdown("---")
-
-    news_df.insert(0, "S.No", range(1, len(news_df) + 1))
-    news_df["Published (IST)"] = news_df["Published_dt"].dt.strftime("%d-%b-%Y %I:%M %p IST")
-
     st.dataframe(
-        news_df[["S.No", "Category", "Impact", "Headline", "Published (IST)", "Link"]],
+        news_df,
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -176,7 +230,7 @@ if not news_df.empty:
         }
     )
 else:
-    st.info("No market news available.")
+    st.info("No news available")
 
 # -------------------------------------------------
 # FOOTER
