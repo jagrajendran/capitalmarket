@@ -37,6 +37,7 @@ def fetch_market_data(symbol):
 symbols = {
     "NIFTY 50": "^NSEI",
     "BANKNIFTY": "^NSEBANK",
+    "SENSEX": "^BSESN", 
     "India VIX": "^INDIAVIX",
     "S&P 500": "^GSPC",
     "NASDAQ": "^IXIC",
