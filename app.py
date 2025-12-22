@@ -7,7 +7,7 @@ from datetime import datetime
 import pytz
 
 # -------------------------------------------------
-# YFINANCE HARDENING (VERY IMPORTANT)
+# YFINANCE HARDENING
 # -------------------------------------------------
 os.environ["YFINANCE_NO_TZ_CACHE"] = "1"
 
@@ -19,7 +19,6 @@ st.set_page_config(page_title="Capital Market Pulse", layout="wide")
 st.title("📊 Capital Market Pulse")
 st.caption("Global markets • India bias • Intraday readiness")
 
-# IST Time
 ist = pytz.timezone("Asia/Kolkata")
 st.markdown(f"🕒 **Last updated:** {datetime.now(ist).strftime('%d-%b-%Y %I:%M %p IST')}")
 
@@ -28,27 +27,41 @@ st.markdown(f"🕒 **Last updated:** {datetime.now(ist).strftime('%d-%b-%Y %I:%M
 # -------------------------------------------------
 @st.cache_data(ttl=900)
 def fetch_batch_data(symbol_dict):
-    data = yf.download(
+    return yf.download(
         tickers=list(symbol_dict.values()),
-        period="2d",
+        period="5d",
         group_by="ticker",
         threads=False,
         auto_adjust=True,
         progress=False
     )
-    return data
 
 
 def extract_price(data, symbol):
     try:
-        df = data[symbol]
-        if len(df) < 2:
+        # Handle both single & multi symbol responses
+        if isinstance(data.columns, pd.MultiIndex):
+            if symbol not in data.columns.get_level_values(0):
+                return None
+            df = data[symbol]
+        else:
+            df = data
+
+        if "Close" not in df.columns or len(df) < 2:
             return None
-        prev = df["Close"].iloc[-2]
-        curr = df["Close"].iloc[-1]
+
+        # Use last 2 valid closes
+        closes = df["Close"].dropna()
+        if len(closes) < 2:
+            return None
+
+        prev = closes.iloc[-2]
+        curr = closes.iloc[-1]
+
         pct = ((curr / prev) - 1) * 100
         return round(curr, 2), round(prev, 2), round(pct, 2)
-    except:
+
+    except Exception:
         return None
 
 
@@ -223,11 +236,9 @@ for category, url in news_feeds.items():
         except:
             continue
 
-        impact = (
-            "HIGH"
-            if any(k in entry.title.lower() for k in HIGH_IMPACT_KEYWORDS)
-            else "NORMAL"
-        )
+        impact = "HIGH" if any(
+            k in entry.title.lower() for k in HIGH_IMPACT_KEYWORDS
+        ) else "NORMAL"
 
         news_rows.append({
             "Category": category,
