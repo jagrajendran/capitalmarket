@@ -1,11 +1,15 @@
+import os
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import feedparser
 from datetime import datetime
 import pytz
-import time
-import random
+
+# -------------------------------------------------
+# YFINANCE HARDENING (VERY IMPORTANT)
+# -------------------------------------------------
+os.environ["YFINANCE_NO_TZ_CACHE"] = "1"
 
 # -------------------------------------------------
 # STREAMLIT CONFIG
@@ -22,16 +26,30 @@ st.markdown(f"🕒 **Last updated:** {datetime.now(ist).strftime('%d-%b-%Y %I:%M
 # -------------------------------------------------
 # COMMON FUNCTIONS
 # -------------------------------------------------
-@st.cache_data(ttl=600)
-def fetch_market_data(symbol):
-    ticker = yf.Ticker(symbol)
-    hist = ticker.history(period="2d")
-    if len(hist) < 2:
+@st.cache_data(ttl=900)
+def fetch_batch_data(symbol_dict):
+    data = yf.download(
+        tickers=list(symbol_dict.values()),
+        period="2d",
+        group_by="ticker",
+        threads=False,
+        auto_adjust=True,
+        progress=False
+    )
+    return data
+
+
+def extract_price(data, symbol):
+    try:
+        df = data[symbol]
+        if len(df) < 2:
+            return None
+        prev = df["Close"].iloc[-2]
+        curr = df["Close"].iloc[-1]
+        pct = ((curr / prev) - 1) * 100
+        return round(curr, 2), round(prev, 2), round(pct, 2)
+    except:
         return None
-    prev = hist["Close"].iloc[-2]
-    curr = hist["Close"].iloc[-1]
-    pct = ((curr / prev) - 1) * 100
-    return round(curr, 2), round(prev, 2), round(pct, 2)
 
 
 def format_change(val):
@@ -50,9 +68,9 @@ def bg_change(val):
     return ""
 
 # -------------------------------------------------
-# GLOBAL & INDIA INDICES
+# SYMBOL DEFINITIONS
 # -------------------------------------------------
-symbols = {
+market_symbols = {
     "NIFTY 50": "^NSEI",
     "BANKNIFTY": "^NSEBANK",
     "SENSEX": "^BSESN",
@@ -69,18 +87,43 @@ symbols = {
     "Crude Oil": "CL=F"
 }
 
+nifty_sectors = {
+    "NIFTY IT": "^CNXIT",
+    "NIFTY BANK": "^NSEBANK",
+    "NIFTY FMCG": "^CNXFMCG",
+    "NIFTY PHARMA": "^CNXPHARMA",
+    "NIFTY METAL": "^CNXMETAL",
+    "NIFTY AUTO": "^CNXAUTO",
+    "NIFTY REALTY": "^CNXREALTY",
+    "NIFTY ENERGY": "^CNXENERGY",
+    "NIFTY PSU BANK": "^CNXPSUBANK",
+    "NIFTY FIN SERVICE": "^CNXFIN"
+}
+
+sensex_sectors = {
+    "BSE IT": "^BSEIT",
+    "BSE BANKEX": "^BSEBANKEX",
+    "BSE FMCG": "^BSEFMCG",
+    "BSE PHARMA": "^BSEPHARMA",
+    "BSE METAL": "^BSEMETAL",
+    "BSE AUTO": "^BSEAUTO",
+    "BSE REALTY": "^BSEREALTY",
+    "BSE POWER": "^BSEPOWER",
+    "BSE CAPITAL GOODS": "^BSECAP"
+}
+
+# -------------------------------------------------
+# GLOBAL & INDIA MARKET SNAPSHOT
+# -------------------------------------------------
+st.subheader("🌍 Global & India Market Snapshot")
+
+market_data = fetch_batch_data(market_symbols)
 market_rows = []
 
-for name, symbol in symbols.items():
-    try:
-        data = fetch_market_data(symbol)
-        if data:
-            market_rows.append([name, data[0], data[1], data[2]])
-        time.sleep(random.uniform(0.3, 0.6))
-    except:
-        continue
-
-st.subheader("🌍 Global & India Market Snapshot")
+for name, symbol in market_symbols.items():
+    values = extract_price(market_data, symbol)
+    if values:
+        market_rows.append([name, values[0], values[1], values[2]])
 
 if market_rows:
     market_df = pd.DataFrame(
@@ -97,30 +140,18 @@ else:
     st.warning("Market data unavailable")
 
 # -------------------------------------------------
-# NIFTY SECTOR DATA
+# NIFTY SECTOR PERFORMANCE
 # -------------------------------------------------
 st.markdown("---")
 st.subheader("🏭 NIFTY Sector Performance")
 
-nifty_sectors = {
-    "NIFTY IT": "^CNXIT",
-    "NIFTY BANK": "^NSEBANK",
-    "NIFTY FMCG": "^CNXFMCG",
-    "NIFTY PHARMA": "^CNXPHARMA",
-    "NIFTY METAL": "^CNXMETAL",
-    "NIFTY AUTO": "^CNXAUTO",
-    "NIFTY REALTY": "^CNXREALTY",
-    "NIFTY ENERGY": "^CNXENERGY",
-    "NIFTY PSU BANK": "^CNXPSUBANK",
-    "NIFTY FIN SERVICE": "^CNXFIN"
-}
-
+nifty_data = fetch_batch_data(nifty_sectors)
 nifty_rows = []
 
 for name, symbol in nifty_sectors.items():
-    data = fetch_market_data(symbol)
-    if data:
-        nifty_rows.append([name, data[0], data[1], data[2]])
+    values = extract_price(nifty_data, symbol)
+    if values:
+        nifty_rows.append([name, values[0], values[1], values[2]])
 
 if nifty_rows:
     nifty_df = pd.DataFrame(
@@ -137,29 +168,18 @@ else:
     st.warning("NIFTY sector data unavailable")
 
 # -------------------------------------------------
-# SENSEX SECTOR DATA
+# SENSEX SECTOR PERFORMANCE
 # -------------------------------------------------
 st.markdown("---")
 st.subheader("🏭 SENSEX Sector Performance")
 
-sensex_sectors = {
-    "BSE IT": "^BSEIT",
-    "BSE BANKEX": "^BSEBANKEX",
-    "BSE FMCG": "^BSEFMCG",
-    "BSE PHARMA": "^BSEPHARMA",
-    "BSE METAL": "^BSEMETAL",
-    "BSE AUTO": "^BSEAUTO",
-    "BSE REALTY": "^BSEREALTY",
-    "BSE POWER": "^BSEPOWER",
-    "BSE CAPITAL GOODS": "^BSECAP"
-}
-
+sensex_data = fetch_batch_data(sensex_sectors)
 sensex_rows = []
 
 for name, symbol in sensex_sectors.items():
-    data = fetch_market_data(symbol)
-    if data:
-        sensex_rows.append([name, data[0], data[1], data[2]])
+    values = extract_price(sensex_data, symbol)
+    if values:
+        sensex_rows.append([name, values[0], values[1], values[2]])
 
 if sensex_rows:
     sensex_df = pd.DataFrame(
