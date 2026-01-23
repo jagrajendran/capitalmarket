@@ -49,10 +49,17 @@ def fetch_batch_data(symbols):
 
 def extract_price(data, symbol):
     try:
-        df = data[symbol] if isinstance(data.columns, pd.MultiIndex) else data
+        if isinstance(data.columns, pd.MultiIndex):
+            if symbol not in data.columns.get_level_values(0):
+                return None
+            df = data[symbol]
+        else:
+            df = data
+
         closes = df["Close"].dropna()
         if len(closes) < 2:
             return None
+
         prev = round(closes.iloc[-2], 2)
         curr = round(closes.iloc[-1], 2)
         pct = round(((curr / prev) - 1) * 100, 2)
@@ -90,7 +97,7 @@ def ai_takeaway(headline):
         return "Fed signal → global risk sentiment & FII flows impacted"
     if "inflation" in h:
         return "Inflation data → bond yields & rate expectations in focus"
-    if "crude" in h or "oil" in h:
+    if "oil" in h or "crude" in h:
         return "Oil prices → inflation & energy stocks affected"
     if "earnings" in h or "results" in h:
         return "Earnings news → stock-specific volatility likely"
@@ -111,8 +118,10 @@ GLOBAL = {
     "FTSE 100": "^FTSE"
 }
 
+# ✅ GIFT + SGX fallback
 INDIA = {
     "GIFT NIFTY": "^NIFTY_GIFT",
+    "SGX NIFTY": "SGXNIFTY=F",
     "NIFTY 50": "^NSEI",
     "BANKNIFTY": "^NSEBANK",
     "SENSEX": "^BSESN",
@@ -134,7 +143,7 @@ BONDS_COMMODITIES = {
 }
 
 # =================================================
-# SECTOR SETUP (PRO-GRADE)
+# SECTOR SETUP (FIXED & REALISTIC)
 # =================================================
 SECTOR_BASE_WEIGHTS = {
     "Financial Services": 36.5,
@@ -147,8 +156,9 @@ SECTOR_BASE_WEIGHTS = {
     "Healthcare / Pharma": 3.5
 }
 
+# ✅ FIX: Financial Services via BankNifty proxy
 SECTOR_SYMBOLS = {
-    "Financial Services": "^CNXFIN",
+    "Financial Services": "^NSEBANK",
     "Information Technology": "^CNXIT",
     "Oil, Gas & Consumable Fuels": "^CNXENERGY",
     "Automobile & Auto Components": "^CNXAUTO",
@@ -177,7 +187,8 @@ for k,sym in GLOBAL.items():
     if v: rows.append([k,v[0],v[1],v[2]])
 
 df=pd.DataFrame(rows,columns=["Index","Prev","Current","%Chg"])
-st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),use_container_width=False,hide_index=True)
+st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),
+             use_container_width=False, hide_index=True)
 
 # =================================================
 # 🇮🇳 INDIA MARKETS
@@ -191,10 +202,11 @@ for k,sym in INDIA.items():
     if v: rows.append([k,v[0],v[1],v[2]])
 
 df=pd.DataFrame(rows,columns=["Market","Prev","Current","%Chg"])
-st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),use_container_width=False,hide_index=True)
+st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),
+             use_container_width=False, hide_index=True)
 
 # =================================================
-# 🏭 SECTOR PERFORMANCE (WEIGHTED CONTEXT)
+# 🏭 SECTOR PERFORMANCE (WITH OTHER SECTORS)
 # =================================================
 st.markdown("---")
 st.subheader("🏭 Sector Performance (NIFTY 50 Context)")
@@ -205,17 +217,26 @@ sector_data = fetch_batch_data(SECTOR_SYMBOLS)
 for sector,sym in SECTOR_SYMBOLS.items():
     v=extract_price(sector_data,sym)
     if not v: continue
-    base_wt=SECTOR_BASE_WEIGHTS.get(sector,0)
-    impact=impact_label(base_wt,v[2])
-    rows.append([sector,f"{base_wt:.1f} %",f"{v[2]:.2f} %",impact])
+    wt=SECTOR_BASE_WEIGHTS[sector]
+    impact=impact_label(wt,v[2])
+    rows.append([sector,f"{wt:.1f} %",f"{v[2]:.2f} %",impact])
 
-df=pd.DataFrame(
+sector_df=pd.DataFrame(
     rows,
-    columns=["Sector","Approx Weight in NIFTY","Sector % Change","Impact on Index"]
+    columns=["Sector","Approx Weight in NIFTY","Sector % Change","Impact"]
 )
 
+# ➕ Add Other sectors as residual
+other_weight = round(100 - sum(SECTOR_BASE_WEIGHTS.values()), 1)
+sector_df.loc[len(sector_df)] = [
+    "Other Sectors (Metals, Utilities, Durables)",
+    f"{other_weight} %",
+    "—",
+    "LOW"
+]
+
 st.dataframe(
-    df.style.applymap(impact_color,subset=["Impact on Index"]),
+    sector_df.style.applymap(impact_color,subset=["Impact"]),
     use_container_width=False,
     hide_index=True
 )
@@ -232,10 +253,11 @@ for k,sym in BONDS_COMMODITIES.items():
     if v: rows.append([k,v[0],v[1],v[2]])
 
 df=pd.DataFrame(rows,columns=["Asset","Prev","Current","%Chg"])
-st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),use_container_width=False,hide_index=True)
+st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),
+             use_container_width=False, hide_index=True)
 
 # =================================================
-# 📰 MARKET NEWS (AI SUMMARY)
+# 📰 MARKET NEWS (LAST 48 HOURS + AI SUMMARY)
 # =================================================
 st.markdown("---")
 st.subheader("📰 Market News (Last 48 Hours)")
@@ -256,25 +278,34 @@ for cat,url in NEWS_FEEDS.items():
             pub_ist=pub_utc.astimezone(ist)
         except:
             continue
-        if (now_ist-pub_ist).total_seconds()>48*3600: continue
+
+        if (now_ist-pub_ist).total_seconds()>48*3600:
+            continue
 
         t=e.title.lower()
-        if any(k in t for k in HIGH_IMPACT_KEYWORDS): impact="HIGH"
-        elif any(k in t for k in LOW_IMPACT_KEYWORDS): impact="LOW"
-        else: impact="NORMAL"
+        if any(k in t for k in HIGH_IMPACT_KEYWORDS):
+            impact="HIGH"
+        elif any(k in t for k in LOW_IMPACT_KEYWORDS):
+            impact="LOW"
+        else:
+            impact="NORMAL"
 
         news.append([
-            cat,impact,e.title,ai_takeaway(e.title),
-            pub_ist.strftime("%d-%b-%Y %I:%M %p IST"),e.link
+            cat,
+            impact,
+            e.title,
+            ai_takeaway(e.title),
+            pub_ist.strftime("%d-%b-%Y %I:%M %p IST"),
+            e.link
         ])
 
-df=pd.DataFrame(
+news_df=pd.DataFrame(
     news,
     columns=["Category","Impact","Headline","AI Takeaway","Published","Link"]
 ).sort_values("Published",ascending=False)
 
 st.dataframe(
-    df.style.applymap(impact_color,subset=["Impact"]),
+    news_df.style.applymap(impact_color,subset=["Impact"]),
     use_container_width=True,
     hide_index=True,
     column_config={"Link":st.column_config.LinkColumn("Open")}
