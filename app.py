@@ -106,31 +106,22 @@ def ai_takeaway(headline):
     return "Market sentiment cue → watch index reaction"
 
 # =================================================
-# FREE OPTIONS OI (SAFE)
+# FREE OPTIONS OI
 # =================================================
 @st.cache_data(ttl=300)
 def get_nifty_option_chain_free():
-    symbols_to_try = ["^NSEI", "NIFTY.NS"]
-
-    for sym in symbols_to_try:
+    for sym in ["^NSEI", "NIFTY.NS"]:
         try:
-            ticker = yf.Ticker(sym)
-            if not ticker.options:
+            t = yf.Ticker(sym)
+            if not t.options:
                 continue
-
-            expiry = ticker.options[0]
-            opt = ticker.option_chain(expiry)
-
+            expiry = t.options[0]
+            opt = t.option_chain(expiry)
             if opt.calls.empty or opt.puts.empty:
                 continue
-
-            calls = opt.calls[["strike", "openInterest", "lastPrice"]]
-            puts = opt.puts[["strike", "openInterest", "lastPrice"]]
-
-            return expiry, calls, puts
+            return expiry, opt.calls, opt.puts
         except:
             continue
-
     return None, None, None
 
 # =================================================
@@ -189,7 +180,7 @@ market_data = fetch_batch_data({**GLOBAL, **INDIA, **SECTOR_SYMBOLS})
 tab1, tab2 = st.tabs(["📊 Market Dashboard", "📈 Options OI (FREE)"])
 
 # =================================================
-# TAB 1: DASHBOARD
+# TAB 1: MARKET DASHBOARD
 # =================================================
 with tab1:
     st.subheader("🌍 Global Markets")
@@ -199,7 +190,7 @@ with tab1:
         if v: rows.append([k,v[0],v[1],v[2]])
     df=pd.DataFrame(rows,columns=["Index","Prev","Current","%Chg"])
     st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),
-                 use_container_width=False, hide_index=True)
+                 hide_index=True)
 
     st.markdown("---")
     st.subheader("🇮🇳 India Markets")
@@ -209,10 +200,10 @@ with tab1:
         if v: rows.append([k,v[0],v[1],v[2]])
     df=pd.DataFrame(rows,columns=["Market","Prev","Current","%Chg"])
     st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),
-                 use_container_width=False, hide_index=True)
+                 hide_index=True)
 
     st.markdown("---")
-    st.subheader("🏭 Sector Performance (NIFTY 50 Context)")
+    st.subheader("🏭 Sector Performance")
     rows=[]
     sector_data=fetch_batch_data(SECTOR_SYMBOLS)
     for s,sym in SECTOR_SYMBOLS.items():
@@ -220,66 +211,66 @@ with tab1:
         if v:
             wt=SECTOR_BASE_WEIGHTS[s]
             rows.append([s,f"{wt:.1f} %",f"{v[2]:.2f} %",impact_label(wt,v[2])])
-
-    other_weight = round(100 - sum(SECTOR_BASE_WEIGHTS.values()),1)
-    rows.append(["Other Sectors","{} %".format(other_weight),"—","LOW"])
-
+    rows.append(["Other Sectors",f"{round(100-sum(SECTOR_BASE_WEIGHTS.values()),1)} %","—","LOW"])
     df=pd.DataFrame(rows,columns=["Sector","Weight","%Chg","Impact"])
     st.dataframe(df.style.applymap(impact_color,subset=["Impact"]),
-                 use_container_width=False, hide_index=True)
+                 hide_index=True)
+
+    # ================= NEWS =================
+    st.markdown("---")
+    st.subheader("📰 Market News (Last 48 Hours)")
+
+    feeds = {
+        "India": "https://news.google.com/rss/search?q=india+stock+market+nifty",
+        "Global": "https://news.google.com/rss/search?q=global+financial+markets"
+    }
+
+    news=[]
+    now=datetime.now(ist)
+    for cat,url in feeds.items():
+        feed=feedparser.parse(url)
+        for e in feed.entries:
+            try:
+                pub=datetime(*e.published_parsed[:6],tzinfo=pytz.utc).astimezone(ist)
+            except:
+                continue
+            if (now-pub).total_seconds()>48*3600:
+                continue
+            t=e.title.lower()
+            impact="HIGH" if any(k in t for k in HIGH_IMPACT_KEYWORDS) else \
+                   "LOW" if any(k in t for k in LOW_IMPACT_KEYWORDS) else "NORMAL"
+            news.append([cat,impact,e.title,ai_takeaway(e.title),
+                         pub.strftime("%d-%b-%Y %I:%M %p IST"),e.link])
+
+    if news:
+        df=pd.DataFrame(news,columns=["Category","Impact","Headline","AI Takeaway","Published","Link"])
+        st.dataframe(df.style.applymap(impact_color,subset=["Impact"]),
+                     hide_index=True,
+                     column_config={"Link":st.column_config.LinkColumn("Open")})
+    else:
+        st.info("No major market news in last 48 hours")
 
 # =================================================
-# TAB 2: OPTIONS OI (FREE)
+# TAB 2: OPTIONS OI
 # =================================================
 with tab2:
     st.subheader("📈 NIFTY Options – FREE OI Levels")
-
-    expiry, calls, puts = get_nifty_option_chain_free()
+    expiry,calls,puts=get_nifty_option_chain_free()
 
     if expiry:
         st.caption(f"Nearest Expiry: {expiry}")
+        top_c=calls.sort_values("openInterest",ascending=False).head(5)
+        top_p=puts.sort_values("openInterest",ascending=False).head(5)
 
-        top_calls = calls.sort_values("openInterest", ascending=False).head(5)
-        top_puts = puts.sort_values("openInterest", ascending=False).head(5)
+        c1,c2=st.columns(2)
+        c1.dataframe(top_c[["strike","openInterest","lastPrice"]],
+                     hide_index=True)
+        c2.dataframe(top_p[["strike","openInterest","lastPrice"]],
+                     hide_index=True)
 
-        c1, c2 = st.columns(2)
-
-        with c1:
-            st.markdown("### 🔴 Top CALL OI (Resistance)")
-            st.dataframe(
-                top_calls.rename(columns={
-                    "strike":"Strike","openInterest":"Call OI","lastPrice":"LTP"
-                }),
-                hide_index=True,
-                use_container_width=True
-            )
-
-        with c2:
-            st.markdown("### 🟢 Top PUT OI (Support)")
-            st.dataframe(
-                top_puts.rename(columns={
-                    "strike":"Strike","openInterest":"Put OI","lastPrice":"LTP"
-                }),
-                hide_index=True,
-                use_container_width=True
-            )
-
-        support = int(top_puts.iloc[0]["strike"])
-        resistance = int(top_calls.iloc[0]["strike"])
-
-        s1, s2 = st.columns(2)
-        s1.metric("🟢 Strong Support", support)
-        s2.metric("🔴 Strong Resistance", resistance)
-
-        st.markdown("### 🧠 How to Use (FREE Mode)")
-        st.write(f"• Above **{resistance}** → short covering possible")
-        st.write(f"• Below **{support}** → long unwinding risk")
-        st.write("• Inside range → option writers dominate (range-bound)")
-
+        st.metric("🟢 Support",int(top_p.iloc[0]["strike"]))
+        st.metric("🔴 Resistance",int(top_c.iloc[0]["strike"]))
     else:
-        st.warning(
-            "NIFTY option chain temporarily unavailable (free data limitation).\n"
-            "Try again during market hours or refresh after a few minutes."
-        )
+        st.warning("NIFTY option chain unavailable (free data limitation)")
 
 st.caption("📌 Educational dashboard only. Not investment advice.")
