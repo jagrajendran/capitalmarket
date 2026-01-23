@@ -114,7 +114,7 @@ GLOBAL = {
 }
 
 INDIA = {
-    "NIFTY 50": "^NSEI", "BANKNIFTY": "^NSEBANK",
+    "GIFT NIFTY": "^NIFTY_GIFT", "NIFTY 50": "^NSEI", "BANKNIFTY": "^NSEBANK",
     "SENSEX": "^BSESN", "India VIX": "^INDIAVIX",
     "USDINR": "USDINR=X"
 }
