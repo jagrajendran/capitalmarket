@@ -13,20 +13,20 @@ import pytz
 # CONFIG
 # =================================================
 os.environ["YFINANCE_NO_TZ_CACHE"] = "1"
-st.set_page_config(page_title="Capital Market Pulse — Intraday PRO", layout="wide")
+st.set_page_config(page_title="Capital Market Pulse — FREE", layout="wide")
 
 ist = pytz.timezone("Asia/Kolkata")
 
-st.title("📊 Capital Market Pulse — Intraday PRO")
-st.caption("Macro → Index → Sector → Stock → OI → News → Sentiment")
+st.title("📊 Capital Market Pulse — FREE Intraday")
+st.caption("Free data only • Honest signals • Intraday-ready")
 st.markdown(f"🕒 **Last updated:** {datetime.now(ist).strftime('%d-%b-%Y %I:%M %p IST')}")
 
 # =================================================
 # CONSTANTS
 # =================================================
 HIGH_IMPACT_KEYWORDS = [
-    "rbi","fed","interest rate","rate hike","rate cut","inflation","cpi","wpi",
-    "gdp","recession","crash","selloff","war","geopolitical","bond yield"
+    "rbi","fed","interest rate","rate hike","rate cut","inflation",
+    "cpi","gdp","recession","crash","selloff","war","geopolitical"
 ]
 
 LOW_IMPACT_KEYWORDS = [
@@ -92,35 +92,46 @@ def impact_color(val):
 def ai_takeaway(headline):
     h = headline.lower()
     if "rbi" in h:
-        return "RBI cue → rate-sensitive stocks may react"
+        return "RBI policy cue → rate-sensitive stocks may react"
     if "fed" in h:
         return "Fed signal → global risk sentiment impacted"
     if "inflation" in h:
         return "Inflation data → bond yields & rates in focus"
     if "oil" in h or "crude" in h:
         return "Oil prices → inflation & energy stocks affected"
-    if "earnings" in h or "results" in h:
+    if "earnings" in h:
         return "Earnings → stock-specific volatility"
     if "war" in h or "geopolitical" in h:
         return "Geopolitical risk → volatility rises"
     return "Market sentiment cue → watch index reaction"
 
 # =================================================
-# OPTIONS OI FUNCTIONS
+# FREE OPTIONS OI (SAFE)
 # =================================================
-@st.cache_data(ttl=180)
-def get_nifty_option_chain():
-    try:
-        ticker = yf.Ticker("^NSEI")
-        expiry = ticker.options[0]
-        opt = ticker.option_chain(expiry)
+@st.cache_data(ttl=300)
+def get_nifty_option_chain_free():
+    symbols_to_try = ["^NSEI", "NIFTY.NS"]
 
-        calls = opt.calls[["strike", "openInterest", "lastPrice"]]
-        puts = opt.puts[["strike", "openInterest", "lastPrice"]]
+    for sym in symbols_to_try:
+        try:
+            ticker = yf.Ticker(sym)
+            if not ticker.options:
+                continue
 
-        return expiry, calls, puts
-    except:
-        return None, None, None
+            expiry = ticker.options[0]
+            opt = ticker.option_chain(expiry)
+
+            if opt.calls.empty or opt.puts.empty:
+                continue
+
+            calls = opt.calls[["strike", "openInterest", "lastPrice"]]
+            puts = opt.puts[["strike", "openInterest", "lastPrice"]]
+
+            return expiry, calls, puts
+        except:
+            continue
+
+    return None, None, None
 
 # =================================================
 # SYMBOLS
@@ -175,10 +186,10 @@ market_data = fetch_batch_data({**GLOBAL, **INDIA, **SECTOR_SYMBOLS})
 # =================================================
 # TABS
 # =================================================
-tab1, tab2 = st.tabs(["📊 Market Dashboard", "📈 Options OI (NIFTY)"])
+tab1, tab2 = st.tabs(["📊 Market Dashboard", "📈 Options OI (FREE)"])
 
 # =================================================
-# TAB 1: MAIN DASHBOARD
+# TAB 1: DASHBOARD
 # =================================================
 with tab1:
     st.subheader("🌍 Global Markets")
@@ -209,17 +220,21 @@ with tab1:
         if v:
             wt=SECTOR_BASE_WEIGHTS[s]
             rows.append([s,f"{wt:.1f} %",f"{v[2]:.2f} %",impact_label(wt,v[2])])
+
+    other_weight = round(100 - sum(SECTOR_BASE_WEIGHTS.values()),1)
+    rows.append(["Other Sectors","{} %".format(other_weight),"—","LOW"])
+
     df=pd.DataFrame(rows,columns=["Sector","Weight","%Chg","Impact"])
     st.dataframe(df.style.applymap(impact_color,subset=["Impact"]),
                  use_container_width=False, hide_index=True)
 
 # =================================================
-# TAB 2: OPTIONS OI
+# TAB 2: OPTIONS OI (FREE)
 # =================================================
 with tab2:
-    st.subheader("📊 NIFTY Options – Strike-wise OI")
+    st.subheader("📈 NIFTY Options – FREE OI Levels")
 
-    expiry, calls, puts = get_nifty_option_chain()
+    expiry, calls, puts = get_nifty_option_chain_free()
 
     if expiry:
         st.caption(f"Nearest Expiry: {expiry}")
@@ -256,12 +271,15 @@ with tab2:
         s1.metric("🟢 Strong Support", support)
         s2.metric("🔴 Strong Resistance", resistance)
 
-        st.markdown("### 🧠 Intraday OI Interpretation")
-        st.write(f"• Above **{resistance}** → short covering rally possible")
-        st.write(f"• Below **{support}** → long unwinding / panic risk")
-        st.write("• Inside range → option writers in control (range-bound)")
+        st.markdown("### 🧠 How to Use (FREE Mode)")
+        st.write(f"• Above **{resistance}** → short covering possible")
+        st.write(f"• Below **{support}** → long unwinding risk")
+        st.write("• Inside range → option writers dominate (range-bound)")
 
     else:
-        st.warning("NIFTY option chain data unavailable")
+        st.warning(
+            "NIFTY option chain temporarily unavailable (free data limitation).\n"
+            "Try again during market hours or refresh after a few minutes."
+        )
 
 st.caption("📌 Educational dashboard only. Not investment advice.")
