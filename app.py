@@ -98,7 +98,10 @@ market_symbols = {
     "USDINR": "USDINR=X",
     "Gold": "GC=F",
     "Silver": "SI=F",
-    "Crude Oil": "CL=F"
+    "Crude Oil": "CL=F",
+    "US 10Y Bond Yield": "^TNX",
+    "US 2Y Bond Yield": "^IRX",
+    "US 30Y Bond Yield": "^TYX"
 }
 
 nifty_sectors = {
