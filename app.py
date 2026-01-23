@@ -36,6 +36,17 @@ def fetch_batch_data(symbols):
         progress=False
     )
 
+@st.cache_data(ttl=86400)
+def get_market_caps(symbols):
+    caps = {}
+    for name, sym in symbols.items():
+        try:
+            cap = yf.Ticker(sym).info.get("marketCap")
+            caps[name] = round(cap / 1e7, 0) if cap else None  # ₹ Cr approx
+        except:
+            caps[name] = None
+    return caps
+
 def extract_price(data, symbol):
     try:
         df = data[symbol] if isinstance(data.columns, pd.MultiIndex) else data
@@ -60,8 +71,8 @@ def heat_color(val):
 def dir_color(val):
     return (
         "background-color:#e6f4ea;color:#137333;font-weight:bold"
-        if val > 0
-        else "background-color:#fdecea;color:#a50e0e;font-weight:bold"
+        if val > 0 else
+        "background-color:#fdecea;color:#a50e0e;font-weight:bold"
     )
 
 # =================================================
@@ -115,65 +126,55 @@ NIFTY_NEXT_50 = {k: f"{k}.NS" for k in [
     "VOLTAS","ZEEL"
 ]}
 
+# Static weight maps (realistic, rest default 0.5)
+NIFTY50_WEIGHTS = {
+    "RELIANCE":10.5,"HDFCBANK":8.9,"ICICIBANK":7.2,"INFY":6.4,"TCS":4.6,
+    "LT":4.0,"HINDUNILVR":3.1,"ITC":3.0,"AXISBANK":2.9,"SBIN":2.8
+}
+NEXT50_WEIGHTS = {
+    "PIDILITIND":3.2,"DLF":2.8,"TRENT":2.6,"INDIGO":2.5,"GODREJCP":2.4
+}
+
 # =================================================
-# FETCH DATA ONCE
+# FETCH DATA
 # =================================================
 market_data = fetch_batch_data({**GLOBAL, **INDIA, **SECTORS, **BONDS_COMMODITIES})
 
 # =================================================
-# 🌍 GLOBAL MARKETS
+# 🌍 GLOBAL
 # =================================================
 st.markdown("---")
 st.subheader("🌍 Global Markets")
-
 rows = []
-for k, sym in GLOBAL.items():
+for k,sym in GLOBAL.items():
     v = extract_price(market_data, sym)
-    if v:
-        rows.append([k, v[0], v[1], v[2]])
-
-df = pd.DataFrame(rows, columns=["Index", "Prev", "Current", "%Chg"])
-st.dataframe(
-    df.style.applymap(dir_color, subset=["%Chg"]),
-    use_container_width=False,
-    column_config={
-        "Index": st.column_config.TextColumn(width="small"),
-        "Prev": st.column_config.NumberColumn(format="%.2f", width="small"),
-        "Current": st.column_config.NumberColumn(format="%.2f", width="small"),
-        "%Chg": st.column_config.NumberColumn(format="%.2f", width="small")
-    },
-    hide_index=True
-)
+    if v: rows.append([k,v[0],v[1],v[2]])
+df = pd.DataFrame(rows,columns=["Index","Prev","Current","%Chg"])
+st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),use_container_width=False,hide_index=True)
 
 # =================================================
-# 🇮🇳 INDIA MARKETS
+# 🇮🇳 INDIA
 # =================================================
 st.markdown("---")
 st.subheader("🇮🇳 India Markets")
-
-rows = []
-for k, sym in INDIA.items():
-    v = extract_price(market_data, sym)
-    if v:
-        rows.append([k, v[0], v[1], v[2]])
-
-df = pd.DataFrame(rows, columns=["Market", "Prev", "Current", "%Chg"])
-st.dataframe(df.style.applymap(dir_color, subset=["%Chg"]), use_container_width=False, hide_index=True)
+rows=[]
+for k,sym in INDIA.items():
+    v=extract_price(market_data,sym)
+    if v: rows.append([k,v[0],v[1],v[2]])
+df=pd.DataFrame(rows,columns=["Market","Prev","Current","%Chg"])
+st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),use_container_width=False,hide_index=True)
 
 # =================================================
 # 🏭 SECTORS
 # =================================================
 st.markdown("---")
 st.subheader("🏭 Sectors")
-
-rows = []
-for k, sym in SECTORS.items():
-    v = extract_price(market_data, sym)
-    if v:
-        rows.append([k, v[2]])
-
-df = pd.DataFrame(rows, columns=["Sector", "%Chg"])
-st.dataframe(df.style.applymap(dir_color, subset=["%Chg"]), use_container_width=False, hide_index=True)
+rows=[]
+for k,sym in SECTORS.items():
+    v=extract_price(market_data,sym)
+    if v: rows.append([k,v[2]])
+df=pd.DataFrame(rows,columns=["Sector","%Chg"])
+st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),use_container_width=False,hide_index=True)
 
 # =================================================
 # 🔥 HEATMAP
@@ -181,33 +182,42 @@ st.dataframe(df.style.applymap(dir_color, subset=["%Chg"]), use_container_width=
 st.markdown("---")
 st.subheader("🔥 Heatmap")
 
-choice = st.radio("Index", ["NIFTY 50", "NIFTY NEXT 50"], horizontal=True)
-stocks = NIFTY_50 if choice == "NIFTY 50" else NIFTY_NEXT_50
-heat_data = fetch_batch_data(stocks)
+choice=st.radio("Index",["NIFTY 50","NIFTY NEXT 50"],horizontal=True)
+stocks=NIFTY_50 if choice=="NIFTY 50" else NIFTY_NEXT_50
+weights=NIFTY50_WEIGHTS if choice=="NIFTY 50" else NEXT50_WEIGHTS
 
-rows = []
-for k, sym in stocks.items():
-    v = extract_price(heat_data, sym)
-    if v:
-        rows.append([k, v[0], v[1], v[2]])
+heat_data=fetch_batch_data(stocks)
+caps=get_market_caps(stocks)
 
-df = pd.DataFrame(rows, columns=["Stock", "Prev", "Current", "%Chg"])
-st.dataframe(df.style.applymap(heat_color, subset=["%Chg"]), use_container_width=False, hide_index=True)
+adv=dec=neu=0
+rows=[]
+for name,sym in stocks.items():
+    v=extract_price(heat_data,sym)
+    if not v: continue
+    if v[2]>0: adv+=1
+    elif v[2]<0: dec+=1
+    else: neu+=1
+    rows.append([name,v[0],v[1],v[2],caps.get(name),weights.get(name,0.5)])
+
+c1,c2,c3=st.columns(3)
+c1.metric("Advances 🟢",adv)
+c2.metric("Declines 🔴",dec)
+c3.metric("Neutral ⚪",neu)
+
+df=pd.DataFrame(rows,columns=["Stock","Prev","Current","%Chg","MCap ₹Cr","Weight %"])
+st.dataframe(df.style.applymap(heat_color,subset=["%Chg"]),use_container_width=False,hide_index=True)
 
 # =================================================
 # 💰 BONDS & COMMODITIES
 # =================================================
 st.markdown("---")
 st.subheader("💰 Bonds & Commodities")
-
-rows = []
-for k, sym in BONDS_COMMODITIES.items():
-    v = extract_price(market_data, sym)
-    if v:
-        rows.append([k, v[0], v[1], v[2]])
-
-df = pd.DataFrame(rows, columns=["Asset", "Prev", "Current", "%Chg"])
-st.dataframe(df.style.applymap(dir_color, subset=["%Chg"]), use_container_width=False, hide_index=True)
+rows=[]
+for k,sym in BONDS_COMMODITIES.items():
+    v=extract_price(market_data,sym)
+    if v: rows.append([k,v[0],v[1],v[2]])
+df=pd.DataFrame(rows,columns=["Asset","Prev","Current","%Chg"])
+st.dataframe(df.style.applymap(dir_color,subset=["%Chg"]),use_container_width=False,hide_index=True)
 
 # =================================================
 # 📊 SENTIMENT
@@ -215,43 +225,33 @@ st.dataframe(df.style.applymap(dir_color, subset=["%Chg"]), use_container_width=
 st.markdown("---")
 st.subheader("📊 Market Sentiment")
 
-score, reasons = 0, []
+score=0; reasons=[]
+vix=extract_price(market_data,"^INDIAVIX")
+bond=extract_price(market_data,"^TNX")
+spx=extract_price(market_data,"^GSPC")
 
-vix = extract_price(market_data, "^INDIAVIX")
-bond = extract_price(market_data, "^TNX")
-spx = extract_price(market_data, "^GSPC")
+if vix and vix[2]<0: score+=1; reasons.append("India VIX falling → volatility easing")
+else: reasons.append("India VIX rising → risk increasing")
 
-if vix and vix[2] < 0:
-    score += 1; reasons.append("India VIX falling → volatility easing")
-else:
-    reasons.append("India VIX rising → risk increasing")
+if bond and bond[2]<0: score+=1; reasons.append("US 10Y yield falling → equity supportive")
+else: reasons.append("US 10Y yield rising → equity pressure")
 
-if bond and bond[2] < 0:
-    score += 1; reasons.append("US 10Y yield falling → equity supportive")
-else:
-    reasons.append("US 10Y yield rising → equity pressure")
+if spx and spx[2]>0: score+=1; reasons.append("S&P 500 positive → global risk-on")
+else: reasons.append("S&P 500 weak → global caution")
 
-if spx and spx[2] > 0:
-    score += 1; reasons.append("S&P 500 positive → global risk-on")
-else:
-    reasons.append("S&P 500 weak → global caution")
-
-mood = {3:"🟢 STRONG RISK ON",2:"🟡 MODERATE RISK ON",1:"🟠 CAUTION",0:"🔴 RISK OFF"}
-st.metric("Overall Market Mood", mood[score])
-for r in reasons:
-    st.write("•", r)
+mood={3:"🟢 STRONG RISK ON",2:"🟡 MODERATE RISK ON",1:"🟠 CAUTION",0:"🔴 RISK OFF"}
+st.metric("Overall Market Mood",mood[score])
+for r in reasons: st.write("•",r)
 
 # =================================================
 # 📰 NEWS
 # =================================================
 st.markdown("---")
 st.subheader("📰 Market News")
-
-feed = feedparser.parse("https://news.google.com/rss/search?q=india+stock+market")
-news = [[e.title, e.link] for e in feed.entries[:8]]
-
-df = pd.DataFrame(news, columns=["Headline", "Link"])
-st.dataframe(df, hide_index=True, use_container_width=True,
-             column_config={"Link": st.column_config.LinkColumn("Open")})
+feed=feedparser.parse("https://news.google.com/rss/search?q=india+stock+market")
+news=[[e.title,e.link] for e in feed.entries[:8]]
+df=pd.DataFrame(news,columns=["Headline","Link"])
+st.dataframe(df,use_container_width=True,hide_index=True,
+             column_config={"Link":st.column_config.LinkColumn("Open")})
 
 st.caption("📌 Educational dashboard only. Not investment advice.")
