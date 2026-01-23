@@ -126,11 +126,29 @@ SECTORS = {
 }
 
 BONDS_COMMODITIES = {
+    #  Rates
     "US 10Y Bond Yield": "^TNX",
+
+    #  Precious Metals
     "Gold": "GC=F",
     "Silver": "SI=F",
-    "Crude Oil": "CL=F"
+
+    # Energy
+    "Crude Oil": "CL=F",
+    "Natural Gas": "NG=F",
+
+    # Industrial Metals
+    "Copper": "HG=F",
+    "Aluminium": "ALI=F",
+
+    # Strategic / Nuclear
+    "Uranium (ETF)": "URA",
+
+    # Agriculture
+    "Wheat": "ZW=F",
+    "Corn": "ZC=F"
 }
+
 
 # =================================================
 # NIFTY STOCK LISTS
