@@ -97,6 +97,7 @@ market_symbols = {
     "FTSE 100": "^FTSE",
     "USDINR": "USDINR=X",
     "Gold": "GC=F",
+    "Silver": "SI=F",
     "Crude Oil": "CL=F"
 }
 
