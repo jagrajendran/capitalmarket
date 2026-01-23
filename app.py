@@ -51,12 +51,25 @@ def extract_price(data, sym):
         c = df["Close"].dropna()
         if len(c) < 2:
             return None
-        prev = round(c.iloc[-2], 2)
-        curr = round(c.iloc[-1], 2)
+        prev = c.iloc[-2]
+        curr = c.iloc[-1]
         pct = round(((curr / prev) - 1) * 100, 2)
-        return curr, pct
+        return round(curr,2), pct
     except:
         return None
+
+@st.cache_data(ttl=1800)
+def get_market_caps(stocks):
+    caps = {}
+    for s in stocks:
+        try:
+            info = yf.Ticker(f"{s}.NS").fast_info
+            mc = info.get("marketCap")
+            if mc:
+                caps[s] = mc / 1e7   # ₹ Crore approx
+        except:
+            continue
+    return caps
 
 def heat_color(v):
     if v > 1: return "background-color:#1b5e20;color:white"
@@ -98,7 +111,7 @@ def get_nifty_oi():
     return None, None, None
 
 # =================================================
-# SYMBOLS
+# SYMBOL GROUPS
 # =================================================
 GLOBAL = {
     "S&P500":"^GSPC","NASDAQ":"^IXIC","DOW":"^DJI",
@@ -114,21 +127,16 @@ INDIA = {
 BONDS_COMMODITIES = {
     "US10Y":"^TNX","GOLD":"GC=F","SILVER":"SI=F",
     "CRUDE":"CL=F","NG":"NG=F","COPPER":"HG=F",
-    "ALUM":"ALI=F","URANIUM":"URA"
+    "URANIUM":"URA"
 }
 
-SECTOR_WEIGHTS = {
-    "FIN":36.5,"IT":12,"ENERGY":9.5,"AUTO":8,
-    "FMCG":6.5,"TELECOM":4.5,"INFRA":4,"PHARMA":3.5
-}
 SECTOR_SYMBOLS = {
     "FIN":"^NSEBANK","IT":"^CNXIT","ENERGY":"^CNXENERGY",
-    "AUTO":"^CNXAUTO","FMCG":"^CNXFMCG","TELECOM":"^CNXMEDIA",
-    "INFRA":"^CNXINFRA","PHARMA":"^CNXPHARMA"
+    "AUTO":"^CNXAUTO","FMCG":"^CNXFMCG","PHARMA":"^CNXPHARMA"
 }
 
 # =================================================
-# FULL STOCK LISTS
+# FULL STOCK LISTS (50 + 50)
 # =================================================
 NIFTY_50 = [
 "ADANIENT","ADANIPORTS","APOLLOHOSP","ASIANPAINT","AXISBANK","BAJAJ-AUTO",
@@ -150,7 +158,7 @@ NIFTY_NEXT_50 = [
 ]
 
 # =================================================
-# FETCH DATA (BATCHED)
+# FETCH DATA
 # =================================================
 market_data = fetch_batch({
     **GLOBAL, **INDIA, **BONDS_COMMODITIES, **SECTOR_SYMBOLS,
@@ -167,106 +175,44 @@ tab1, tab2 = st.tabs(["📊 Dashboard", "📈 Options OI"])
 # =================================================
 with tab1:
 
-    # GLOBAL
-    st.subheader("🌍 Global")
-    rows=[]
-    for k,s in GLOBAL.items():
-        v=extract_price(market_data,s)
-        if v: rows.append([k,v[0],v[1]])
-    st.dataframe(pd.DataFrame(rows,columns=["MKT","PRICE","%"])
-                 .style.applymap(dir_color,subset=["%"]),
-                 hide_index=True,use_container_width=False)
-
-    # INDIA
-    st.subheader("🇮🇳 India")
-    rows=[]
-    for k,s in INDIA.items():
-        v=extract_price(market_data,s)
-        if v: rows.append([k,v[0],v[1]])
-    st.dataframe(pd.DataFrame(rows,columns=["MKT","PRICE","%"])
-                 .style.applymap(dir_color,subset=["%"]),
-                 hide_index=True,use_container_width=False)
-
-    # HEATMAP
-    st.subheader("🔥 Heatmap")
+    # -------- HEATMAP --------
+    st.subheader("🔥 Heatmap (Market Cap & Weight)")
     choice = st.radio("Index",["NIFTY 50","NIFTY NEXT 50"],horizontal=True)
     stocks = NIFTY_50 if choice=="NIFTY 50" else NIFTY_NEXT_50
 
-    adv=dec=neu=0; rows=[]
+    caps = get_market_caps(stocks)
+    total_cap = sum(caps.values())
+
+    rows=[]
+    adv=dec=neu=0
     for s in stocks:
-        v=extract_price(market_data,f"{s}.NS")
-        if v:
-            rows.append([s,v[1]])
+        v = extract_price(market_data,f"{s}.NS")
+        if v and s in caps:
+            weight = round((caps[s]/total_cap)*100,2)
+            rows.append([s,v[1],round(caps[s],0),weight])
             adv += v[1]>0
             dec += v[1]<0
             neu += v[1]==0
 
-    c1,c2,c3=st.columns(3)
+    c1,c2,c3 = st.columns(3)
     c1.metric("Advances",adv)
     c2.metric("Declines",dec)
     c3.metric("Neutral",neu)
 
-    st.dataframe(pd.DataFrame(rows,columns=["STOCK","%"])
-                 .style.applymap(heat_color,subset=["%"]),
+    df = pd.DataFrame(rows,columns=["Stock","% Change","Mkt Cap (₹ Cr)","Weight %"])
+    st.dataframe(df.style.applymap(heat_color,subset=["% Change"]),
                  hide_index=True,use_container_width=False)
-
-    # SECTORS
-    st.subheader("🏭 Sectors")
-    rows=[]
-    for k,s in SECTOR_SYMBOLS.items():
-        v=extract_price(market_data,s)
-        if v: rows.append([k,f"{SECTOR_WEIGHTS[k]}%",v[1]])
-    rows.append(["OTHERS",f"{round(100-sum(SECTOR_WEIGHTS.values()),1)}%","—"])
-    st.dataframe(pd.DataFrame(rows,columns=["SEC","WT","%"]),
-                 hide_index=True,use_container_width=False)
-
-    # BONDS & COMMODITIES
-    st.subheader("💰 Bonds & Commodities")
-    rows=[]
-    for k,s in BONDS_COMMODITIES.items():
-        v=extract_price(market_data,s)
-        if v: rows.append([k,v[0],v[1]])
-    st.dataframe(pd.DataFrame(rows,columns=["ASSET","PRICE","%"])
-                 .style.applymap(dir_color,subset=["%"]),
-                 hide_index=True,use_container_width=False)
-
-    # NEWS
-    st.subheader("📰 Market News (48h)")
-    feeds={
-        "India":"https://news.google.com/rss/search?q=india+stock+market",
-        "Global":"https://news.google.com/rss/search?q=global+markets"
-    }
-    news=[]
-    now=datetime.now(ist)
-    for cat,url in feeds.items():
-        feed=feedparser.parse(url)
-        for e in feed.entries:
-            try:
-                pub=datetime(*e.published_parsed[:6],tzinfo=pytz.utc).astimezone(ist)
-            except: continue
-            if (now-pub).total_seconds()>48*3600: continue
-            impact="HIGH" if any(k in e.title.lower() for k in HIGH_IMPACT_KEYWORDS) else \
-                   "LOW" if any(k in e.title.lower() for k in LOW_IMPACT_KEYWORDS) else "NORMAL"
-            news.append([cat,impact,e.title,ai_takeaway(e.title),
-                         pub.strftime("%d-%b %I:%M"),e.link])
-    if news:
-        st.dataframe(pd.DataFrame(news,
-            columns=["CAT","IMP","HEADLINE","TAKEAWAY","TIME","LINK"]),
-            hide_index=True,use_container_width=True,
-            column_config={"LINK":st.column_config.LinkColumn("Open")})
-    else:
-        st.info("No major news")
 
 # =================================================
 # TAB 2: OPTIONS OI
 # =================================================
 with tab2:
     st.subheader("📈 NIFTY Options – FREE")
-    exp,calls,puts=get_nifty_oi()
+    exp,calls,puts = get_nifty_oi()
     if exp:
-        top_c=calls.sort_values("openInterest",ascending=False).head(5)
-        top_p=puts.sort_values("openInterest",ascending=False).head(5)
-        c1,c2=st.columns(2)
+        top_c = calls.sort_values("openInterest",ascending=False).head(5)
+        top_p = puts.sort_values("openInterest",ascending=False).head(5)
+        c1,c2 = st.columns(2)
         c1.dataframe(top_c[["strike","openInterest"]],hide_index=True)
         c2.dataframe(top_p[["strike","openInterest"]],hide_index=True)
         st.metric("Support",int(top_p.iloc[0]["strike"]))
