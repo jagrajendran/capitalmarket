@@ -85,7 +85,6 @@ GLOBAL={"S&P500":"^GSPC","NASDAQ":"^IXIC","DOW":"^DJI",
 INDIA={"GIFT NIFTY":"^NIFTY_GIFT","NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK",
 "SENSEX":"^BSESN","VIX":"^INDIAVIX","USDINR":"USDINR=X"}
 
-# ===== SECTORS =====
 SECTORS={
 "NIFTY AUTO":"^CNXAUTO",
 "NIFTY BANK":"^NSEBANK",
@@ -99,7 +98,6 @@ SECTORS={
 "NIFTY ENERGY":"^CNXENERGY"
 }
 
-# ===== MARKET CAP INDICES =====
 CAP_INDICES={
 "LARGE CAP (NIFTY 50)":"^NSEI",
 "MID CAP (NIFTY MIDCAP 100)":"^NIFTYMIDCAP100",
@@ -195,8 +193,10 @@ with tab1:
     for r in reasons:
         st.write(f"• {r}")
 
-    # ===== HORIZONTAL MARKETS =====
-    c1,c2,c3,c4,c5=st.columns(5)
+    # =========================
+    # ROW 1 : Global | India | Bonds
+    # =========================
+    r1c1,r1c2,r1c3=st.columns(3)
 
     def market_table(title,data_dict):
         rows=[]
@@ -209,13 +209,19 @@ with tab1:
         st.dataframe(df.style.applymap(dir_color,subset=["%"]),
                      hide_index=True,use_container_width=True)
 
-    with c1:
+    with r1c1:
         market_table("🌍 Global Markets",GLOBAL)
-    with c2:
+    with r1c2:
         market_table("🇮🇳 India Markets",INDIA)
+    with r1c3:
+        market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
 
-    # ===== SECTOR TABLE WITH PREV/PRICE/% =====
-    with c3:
+    # =========================
+    # ROW 2 : Sector | Market Cap
+    # =========================
+    r2c1,r2c2=st.columns(2)
+
+    with r2c1:
         st.subheader("🏭 Sector Performance")
         rows=[]
         for k,s in SECTORS.items():
@@ -226,8 +232,7 @@ with tab1:
         st.dataframe(sdf.style.applymap(dir_color,subset=["%"]),
                      hide_index=True,use_container_width=True)
 
-    # ===== MARKET CAP CATEGORY =====
-    with c4:
+    with r2c2:
         st.subheader("📦 Market Cap Performance")
         rows=[]
         for k,s in CAP_INDICES.items():
@@ -238,10 +243,9 @@ with tab1:
         st.dataframe(cdf.style.applymap(dir_color,subset=["%"]),
                      hide_index=True,use_container_width=True)
 
-    with c5:
-        market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
-
-    # ===== HEATMAP =====
+    # =========================
+    # HEATMAP
+    # =========================
     st.subheader("🔥 Heatmap")
 
     idx_sel=st.radio("Select Index",["NIFTY 50","NIFTY NEXT 50"],horizontal=True)
@@ -270,13 +274,12 @@ with tab1:
     st.dataframe(hdf.style.applymap(heat_color,subset=["%"]),
                  hide_index=True,use_container_width=True)
 
-    # =================================================
-    # 📰 MARKET NEWS
-    # =================================================
+    # =========================
+    # MARKET NEWS
+    # =========================
     st.subheader("📰 Market News")
 
     news_rows=[]
-
     for n in news:
         title=n.title
         link=n.link
