@@ -85,6 +85,20 @@ GLOBAL={"S&P500":"^GSPC","NASDAQ":"^IXIC","DOW":"^DJI",
 INDIA={"GIFT NIFTY":"^NIFTY_GIFT","NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK",
 "SENSEX":"^BSESN","VIX":"^INDIAVIX","USDINR":"USDINR=X"}
 
+# ✅ SECTOR INDICES
+SECTORS={
+"NIFTY AUTO":"^CNXAUTO",
+"NIFTY BANK":"^NSEBANK",
+"NIFTY IT":"^CNXIT",
+"NIFTY FMCG":"^CNXFMCG",
+"NIFTY METAL":"^CNXMETAL",
+"NIFTY PHARMA":"^CNXPHARMA",
+"NIFTY PSU BANK":"^CNXPSUBANK",
+"NIFTY REALTY":"^CNXREALTY",
+"NIFTY MEDIA":"^CNXMEDIA",
+"NIFTY ENERGY":"^CNXENERGY"
+}
+
 BONDS_COMMODITIES={"US10Y":"^TNX","GOLD":"GC=F","SILVER":"SI=F",
 "CRUDE":"CL=F","COPPER":"HG=F"}
 
@@ -111,7 +125,7 @@ NIFTY_NEXT_50=[
 # FETCH DATA
 # =================================================
 market_data=fetch_batch({
-**GLOBAL,**INDIA,**BONDS_COMMODITIES,
+**GLOBAL,**INDIA,**SECTORS,**BONDS_COMMODITIES,
 **{s:f"{s}.NS" for s in NIFTY_50+NIFTY_NEXT_50}
 })
 
@@ -174,7 +188,7 @@ with tab1:
         st.write(f"• {r}")
 
     # ===== HORIZONTAL MARKETS =====
-    c1,c2,c3=st.columns(3)
+    c1,c2,c3,c4=st.columns(4)
 
     def market_table(title,data_dict):
         rows=[]
@@ -192,6 +206,16 @@ with tab1:
     with c2:
         market_table("🇮🇳 India Markets",INDIA)
     with c3:
+        st.subheader("🏭 Sector Performance")
+        rows=[]
+        for k,s in SECTORS.items():
+            v=extract_price(market_data,s)
+            if v:
+                rows.append([k,f"{v[2]:.2f}"])
+        sdf=pd.DataFrame(rows,columns=["Sector","%"])
+        st.dataframe(sdf.style.applymap(dir_color,subset=["%"]),
+                     hide_index=True,use_container_width=True)
+    with c4:
         market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
 
     # ===== HEATMAP =====
@@ -224,7 +248,7 @@ with tab1:
                  hide_index=True,use_container_width=True)
 
     # =================================================
-    # 📰 MARKET NEWS (FIXED)
+    # 📰 MARKET NEWS
     # =================================================
     st.subheader("📰 Market News")
 
