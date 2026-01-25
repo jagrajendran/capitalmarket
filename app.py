@@ -253,7 +253,7 @@ with tab1:
     news_df=pd.DataFrame(news_rows,
         columns=["Headline","Impact","Time (IST)"])
 
-    st.markdown(news_df.to_markdown(index=False),unsafe_allow_html=True)
+    st.dataframe(news_df, hide_index=True, use_container_width=True)
 
 # =================================================
 # TAB 2
