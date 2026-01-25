@@ -5,7 +5,6 @@ import os
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import feedparser
 from datetime import datetime
 import pytz
 
@@ -55,7 +54,7 @@ def get_market_caps(stocks):
             if mc:
                 caps[s] = mc / 1e7  # ₹ Cr
         except:
-            continue
+            pass
     return caps
 
 def heat_color(v):
@@ -73,17 +72,17 @@ def dir_color(v):
 # =================================================
 GLOBAL = {
     "S&P500":"^GSPC","NASDAQ":"^IXIC","DOW":"^DJI",
-    "NIKKEI":"^N225","HANG":"^HSI","DAX":"^GDAXI","FTSE":"^FTSE"
+    "NIKKEI":"^N225","HANG SENG":"^HSI","DAX":"^GDAXI","FTSE":"^FTSE"
 }
 
 INDIA = {
-    "GIFT":"^NIFTY_GIFT","NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK",
+    "GIFT NIFTY":"^NIFTY_GIFT","NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK",
     "SENSEX":"^BSESN","VIX":"^INDIAVIX","USDINR":"USDINR=X"
 }
 
 BONDS_COMMODITIES = {
     "US10Y":"^TNX","GOLD":"GC=F","SILVER":"SI=F",
-    "CRUDE":"CL=F","COPPER":"HG=F","URANIUM":"URA"
+    "CRUDE":"CL=F","COPPER":"HG=F","URANIUM ETF":"URA"
 }
 
 NIFTY_50 = [
@@ -119,33 +118,49 @@ market_data = fetch_batch({
 tab1, tab2 = st.tabs(["📊 Dashboard", "📈 Options OI"])
 
 # =================================================
-# TAB 1: FULL DASHBOARD
+# TAB 1
 # =================================================
 with tab1:
 
-    # 🌍 Global
-    st.subheader("🌍 Global Markets")
-    g=[]
-    for k,s in GLOBAL.items():
-        v=extract_price(market_data,s)
-        if v: g.append([k,v[0],v[1]])
-    st.dataframe(pd.DataFrame(g,columns=["Market","Price","%"])
-                 .style.applymap(dir_color,subset=["%"]),
-                 hide_index=True,use_container_width=False)
+    col1, col2, col3 = st.columns(3)
 
-    # 🇮🇳 India
-    st.subheader("🇮🇳 India Markets")
-    i=[]
-    for k,s in INDIA.items():
-        v=extract_price(market_data,s)
-        if v: i.append([k,v[0],v[1]])
-    st.dataframe(pd.DataFrame(i,columns=["Market","Price","%"])
-                 .style.applymap(dir_color,subset=["%"]),
-                 hide_index=True,use_container_width=False)
+    # 🌍 GLOBAL
+    with col1:
+        st.subheader("🌍 Global Markets")
+        g=[]
+        for k,s in GLOBAL.items():
+            v=extract_price(market_data,s)
+            if v: g.append([k,v[0],v[1]])
+        st.dataframe(pd.DataFrame(g,columns=["Market","Price","%"])
+                     .style.applymap(dir_color,subset=["%"]),
+                     hide_index=True,use_container_width=True)
 
-    # 🔥 Heatmap
+    # 🇮🇳 INDIA
+    with col2:
+        st.subheader("🇮🇳 India Markets")
+        i=[]
+        for k,s in INDIA.items():
+            v=extract_price(market_data,s)
+            if v: i.append([k,v[0],v[1]])
+        st.dataframe(pd.DataFrame(i,columns=["Market","Price","%"])
+                     .style.applymap(dir_color,subset=["%"]),
+                     hide_index=True,use_container_width=True)
+
+    # 💰 BONDS
+    with col3:
+        st.subheader("💰 Bonds & Commodities")
+        b=[]
+        for k,s in BONDS_COMMODITIES.items():
+            v=extract_price(market_data,s)
+            if v: b.append([k,v[0],v[1]])
+        st.dataframe(pd.DataFrame(b,columns=["Asset","Price","%"])
+                     .style.applymap(dir_color,subset=["%"]),
+                     hide_index=True,use_container_width=True)
+
+    # 🔥 HEATMAP
     st.subheader("🔥 Heatmap (Weight-aware)")
     idx = st.radio("Index",["NIFTY 50","NIFTY NEXT 50"],horizontal=True)
+
     stocks = NIFTY_50 if idx=="NIFTY 50" else NIFTY_NEXT_50
     caps = get_market_caps(stocks)
     total_cap = sum(caps.values())
@@ -156,7 +171,9 @@ with tab1:
         if v and s in caps:
             wt = round((caps[s]/total_cap)*100,2)
             rows.append([s,v[1],round(caps[s],0),wt])
-            adv+=v[1]>0; dec+=v[1]<0; neu+=v[1]==0
+            adv+=v[1]>0
+            dec+=v[1]<0
+            neu+=v[1]==0
 
     c1,c2,c3=st.columns(3)
     c1.metric("Advances",adv)
@@ -165,23 +182,14 @@ with tab1:
 
     st.dataframe(pd.DataFrame(rows,columns=["Stock","%","MCap ₹Cr","Wt %"])
                  .style.applymap(heat_color,subset=["%"]),
-                 hide_index=True,use_container_width=False)
-
-    # 💰 Bonds & Commodities
-    st.subheader("💰 Bonds & Commodities")
-    b=[]
-    for k,s in BONDS_COMMODITIES.items():
-        v=extract_price(market_data,s)
-        if v: b.append([k,v[0],v[1]])
-    st.dataframe(pd.DataFrame(b,columns=["Asset","Price","%"])
-                 .style.applymap(dir_color,subset=["%"]),
-                 hide_index=True,use_container_width=False)
+                 hide_index=True,use_container_width=True)
 
 # =================================================
-# TAB 2: OPTIONS OI
+# TAB 2
 # =================================================
 with tab2:
     st.subheader("📈 NIFTY Options – FREE (Levels Only)")
-    st.info("Option chain may be unavailable sometimes due to free data limits.")
+    st.info("Option chain may be unavailable due to free data limits.")
 
+# =================================================
 st.caption("📌 Educational only. Not investment advice.")
