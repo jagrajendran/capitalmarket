@@ -70,14 +70,59 @@ def heat_color(v):
     if v<-1: return "background-color:#b71c1c;color:white"
     if v<0: return "background-color:#f4c7c3"
     return ""
+# =================================================
+# 📰 MARKET NEWS (CATEGORY + CLICKABLE LINKS)
+# =================================================
+st.subheader("📰 Market News")
 
-# =================================================
-# NEWS
-# =================================================
-@st.cache_data(ttl=900)
-def fetch_news():
-    url="https://news.google.com/rss/search?q=india+stock+market"
-    return feedparser.parse(url).entries[:12]
+news_rows=[]
+
+for n in news:
+    title = n.title
+    link  = n.link
+
+    # ---- Convert published time to IST ----
+    pub = pd.to_datetime(n.published)
+    pub = pub.tz_localize("UTC").tz_convert("Asia/Kolkata")
+    time_ist = pub.strftime("%d-%b %I:%M %p")
+
+    # ---- Category Detection ----
+    txt = title.lower()
+    if any(x in txt for x in ["india","nifty","sensex","rupee","rbi","banknifty"]):
+        category = "India"
+    else:
+        category = "Global"
+
+    # ---- Impact Detection ----
+    if any(x in txt for x in ["crash","plunge","selloff","rate hike","inflation","war","recession"]):
+        impact="High"
+    elif any(x in txt for x in ["earnings","results","growth","profit","policy","gdp"]):
+        impact="Medium"
+    else:
+        impact="Low"
+
+    news_rows.append([category, title, impact, time_ist, link])
+
+news_df = pd.DataFrame(
+    news_rows,
+    columns=["Category","Headline","Impact","Time (IST)","Link"]
+)
+
+# ---- Render as clickable HTML table ----
+def make_clickable(url, text):
+    return f'<a href="{url}" target="_blank">{text}</a>'
+
+news_df["Headline"] = news_df.apply(
+    lambda x: make_clickable(x["Link"], x["Headline"]), axis=1
+)
+
+news_df = news_df.drop(columns=["Link"])
+
+st.markdown(
+    news_df.to_html(escape=False, index=False),
+    unsafe_allow_html=True
+)
+
 
 # =================================================
 # SYMBOL GROUPS
