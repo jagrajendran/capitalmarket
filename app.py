@@ -36,12 +36,15 @@ def fetch_batch(symbols):
 def extract_price(data, sym):
     try:
         df = data[sym] if isinstance(data.columns, pd.MultiIndex) else data
-        c = df["Close"].dropna()
-        if len(c) < 2:
+        close = df["Close"].dropna()
+        if len(close) < 2:
             return None
-        prev, curr = c.iloc[-2], c.iloc[-1]
+
+        prev = round(float(close.iloc[-2]), 2)
+        curr = round(float(close.iloc[-1]), 2)
         pct = round(((curr / prev) - 1) * 100, 2)
-        return round(curr, 2), pct
+
+        return prev, curr, pct
     except:
         return None
 
@@ -52,7 +55,7 @@ def get_market_caps(stocks):
         try:
             mc = yf.Ticker(f"{s}.NS").fast_info.get("marketCap")
             if mc:
-                caps[s] = mc / 1e7  # ₹ Cr
+                caps[s] = mc / 1e7
         except:
             pass
     return caps
@@ -85,32 +88,10 @@ BONDS_COMMODITIES = {
     "CRUDE":"CL=F","COPPER":"HG=F","URANIUM ETF":"URA"
 }
 
-NIFTY_50 = [
-"ADANIENT","ADANIPORTS","APOLLOHOSP","ASIANPAINT","AXISBANK","BAJAJ-AUTO",
-"BAJFINANCE","BAJAJFINSV","BPCL","BHARTIARTL","BRITANNIA","CIPLA","COALINDIA",
-"DIVISLAB","DRREDDY","EICHERMOT","GRASIM","HCLTECH","HDFCBANK","HDFCLIFE",
-"HEROMOTOCO","HINDALCO","HINDUNILVR","ICICIBANK","ITC","INDUSINDBK","INFY",
-"JSWSTEEL","KOTAKBANK","LT","LTIM","M&M","MARUTI","NESTLEIND","NTPC","ONGC",
-"POWERGRID","RELIANCE","SBIN","SUNPHARMA","TATACONSUM","TATAMOTORS",
-"TATASTEEL","TECHM","TITAN","ULTRACEMCO","UPL","WIPRO"
-]
-
-NIFTY_NEXT_50 = [
-"ABB","ADANIGREEN","ALKEM","AMBUJACEM","AUROPHARMA","BERGEPAINT","BIOCON",
-"BOSCHLTD","CANBK","COLPAL","CONCOR","DABUR","DLF","GAIL","GODREJCP",
-"HAVELLS","HDFCAMC","ICICIGI","IGL","INDIGO","LUPIN","MARICO","MOTHERSON",
-"MUTHOOTFIN","NAUKRI","NMDC","PAGEIND","PEL","PETRONET","PIDILITIND","PNB",
-"SHREECEM","SIEMENS","SRF","TORNTPHARM","TRENT","TVSMOTOR","UBL","VEDL",
-"VOLTAS","ZEEL","ZYDUSLIFE"
-]
-
 # =================================================
 # FETCH DATA
 # =================================================
-market_data = fetch_batch({
-    **GLOBAL, **INDIA, **BONDS_COMMODITIES,
-    **{s: f"{s}.NS" for s in NIFTY_50 + NIFTY_NEXT_50}
-})
+market_data = fetch_batch({**GLOBAL, **INDIA, **BONDS_COMMODITIES})
 
 # =================================================
 # TABS
@@ -127,62 +108,38 @@ with tab1:
     # 🌍 GLOBAL
     with col1:
         st.subheader("🌍 Global Markets")
-        g=[]
+        rows=[]
         for k,s in GLOBAL.items():
             v=extract_price(market_data,s)
-            if v: g.append([k,v[0],v[1]])
-        st.dataframe(pd.DataFrame(g,columns=["Market","Price","%"])
-                     .style.applymap(dir_color,subset=["%"]),
-                     hide_index=True,use_container_width=True)
+            if v: rows.append([k,v[0],v[1],v[2]])
+        st.dataframe(pd.DataFrame(rows,
+            columns=["Market","Prev Close","Price","% Change"])
+            .style.applymap(dir_color,subset=["% Change"]),
+            hide_index=True,use_container_width=True)
 
     # 🇮🇳 INDIA
     with col2:
         st.subheader("🇮🇳 India Markets")
-        i=[]
+        rows=[]
         for k,s in INDIA.items():
             v=extract_price(market_data,s)
-            if v: i.append([k,v[0],v[1]])
-        st.dataframe(pd.DataFrame(i,columns=["Market","Price","%"])
-                     .style.applymap(dir_color,subset=["%"]),
-                     hide_index=True,use_container_width=True)
+            if v: rows.append([k,v[0],v[1],v[2]])
+        st.dataframe(pd.DataFrame(rows,
+            columns=["Market","Prev Close","Price","% Change"])
+            .style.applymap(dir_color,subset=["% Change"]),
+            hide_index=True,use_container_width=True)
 
     # 💰 BONDS
     with col3:
         st.subheader("💰 Bonds & Commodities")
-        b=[]
+        rows=[]
         for k,s in BONDS_COMMODITIES.items():
             v=extract_price(market_data,s)
-            if v: b.append([k,v[0],v[1]])
-        st.dataframe(pd.DataFrame(b,columns=["Asset","Price","%"])
-                     .style.applymap(dir_color,subset=["%"]),
-                     hide_index=True,use_container_width=True)
-
-    # 🔥 HEATMAP
-    st.subheader("🔥 Heatmap (Weight-aware)")
-    idx = st.radio("Index",["NIFTY 50","NIFTY NEXT 50"],horizontal=True)
-
-    stocks = NIFTY_50 if idx=="NIFTY 50" else NIFTY_NEXT_50
-    caps = get_market_caps(stocks)
-    total_cap = sum(caps.values())
-
-    rows=[]; adv=dec=neu=0
-    for s in stocks:
-        v=extract_price(market_data,f"{s}.NS")
-        if v and s in caps:
-            wt = round((caps[s]/total_cap)*100,2)
-            rows.append([s,v[1],round(caps[s],0),wt])
-            adv+=v[1]>0
-            dec+=v[1]<0
-            neu+=v[1]==0
-
-    c1,c2,c3=st.columns(3)
-    c1.metric("Advances",adv)
-    c2.metric("Declines",dec)
-    c3.metric("Neutral",neu)
-
-    st.dataframe(pd.DataFrame(rows,columns=["Stock","%","MCap ₹Cr","Wt %"])
-                 .style.applymap(heat_color,subset=["%"]),
-                 hide_index=True,use_container_width=True)
+            if v: rows.append([k,v[0],v[1],v[2]])
+        st.dataframe(pd.DataFrame(rows,
+            columns=["Asset","Prev Close","Price","% Change"])
+            .style.applymap(dir_color,subset=["% Change"]),
+            hide_index=True,use_container_width=True)
 
 # =================================================
 # TAB 2
