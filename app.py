@@ -101,45 +101,49 @@ NIFTY_50=[
 "TATASTEEL","TECHM","TITAN","ULTRACEMCO","UPL","WIPRO"
 ]
 
+NIFTY_NEXT_50=[
+"ABB","ADANIGREEN","ALKEM","AMBUJACEM","AUROPHARMA","BERGEPAINT","BIOCON",
+"BOSCHLTD","CANBK","COLPAL","CONCOR","DABUR","DLF","GAIL","GODREJCP",
+"HAVELLS","HDFCAMC","ICICIGI","IGL","INDIGO","LUPIN","MARICO","MOTHERSON",
+"MUTHOOTFIN","NAUKRI","NMDC","PAGEIND","PEL","PETRONET","PIDILITIND","PNB",
+"SHREECEM","SIEMENS","SRF","TORNTPHARM","TRENT","TVSMOTOR","UBL","VEDL",
+"VOLTAS","ZEEL","ZYDUSLIFE"
+]
+
 # =================================================
 # FETCH DATA
 # =================================================
 market_data=fetch_batch({
 **GLOBAL,**INDIA,**BONDS_COMMODITIES,
-**{s:f"{s}.NS" for s in NIFTY_50}
+**{s:f"{s}.NS" for s in NIFTY_50+NIFTY_NEXT_50}
 })
 
 news=fetch_news()
 
 # =================================================
-# MARKET MOOD LOGIC + REASONS
+# MARKET MOOD
 # =================================================
-signals=[]
 pos=neg=0
-
-def check_index(name):
-    v=extract_price(market_data,name)
-    if v:
-        if v[2]>0:
-            return f"{name} up {v[2]:.2f}%"
-        else:
-            return f"{name} down {v[2]:.2f}%"
+reasons=[]
 
 for idx in ["^NSEI","^NSEBANK","^BSESN"]:
     v=extract_price(market_data,idx)
     if v:
-        if v[2]>0: pos+=1
-        else: neg+=1
-        signals.append(check_index(idx))
+        if v[2]>0:
+            pos+=1
+            reasons.append(f"{idx} up {v[2]:.2f}%")
+        else:
+            neg+=1
+            reasons.append(f"{idx} down {v[2]:.2f}%")
 
 vix=extract_price(market_data,"^INDIAVIX")
 if vix:
     if vix[2]<0:
-        signals.append("India VIX falling (risk appetite improving)")
         pos+=1
+        reasons.append("India VIX falling (risk-on)")
     else:
-        signals.append("India VIX rising (risk-off)")
         neg+=1
+        reasons.append("India VIX rising (risk-off)")
 
 if pos>neg:
     mood="BULLISH 🟢"
@@ -162,15 +166,15 @@ with tab1:
     st.subheader("😊 Market Mood")
 
     if "BULLISH" in mood:
-        st.success(f"Overall Market Mood: {mood}")
+        st.success(f"Overall Mood: {mood}")
     elif "BEARISH" in mood:
-        st.error(f"Overall Market Mood: {mood}")
+        st.error(f"Overall Mood: {mood}")
     else:
-        st.warning(f"Overall Market Mood: {mood}")
+        st.warning(f"Overall Mood: {mood}")
 
     st.markdown("**Reasons:**")
-    for s in signals:
-        st.write(f"• {s}")
+    for r in reasons:
+        st.write(f"• {r}")
 
     # ===== HORIZONTAL MARKETS =====
     c1,c2,c3=st.columns(3)
@@ -193,17 +197,21 @@ with tab1:
     with c3:
         market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
 
-    # ===== HEATMAP =====
-    st.subheader("🔥 NIFTY 50 Heatmap")
+    # ===== HEATMAP SECTION =====
+    st.subheader("🔥 Heatmap")
 
-    caps=get_market_caps(NIFTY_50)
+    idx_sel=st.radio("Select Index",["NIFTY 50","NIFTY NEXT 50"],horizontal=True)
+
+    stocks=NIFTY_50 if idx_sel=="NIFTY 50" else NIFTY_NEXT_50
+
+    caps=get_market_caps(stocks)
     total=sum(caps.values())
 
     rows=[];adv=dec=neu=0
-    for s in NIFTY_50:
+    for s in stocks:
         v=extract_price(market_data,f"{s}.NS")
         if v and s in caps:
-            wt=(caps[s]/total)*100
+            wt=round((caps[s]/total)*100,2)
             rows.append([s,f"{v[2]:.2f}",round(caps[s],0),f"{wt:.2f}"])
             adv+=v[2]>0
             dec+=v[2]<0
@@ -236,12 +244,16 @@ with tab1:
         else:
             impact="Low"
 
-        news_rows.append([title,impact,time,link])
+        news_rows.append([
+            f"[{title}]({link})",
+            impact,
+            time
+        ])
 
     news_df=pd.DataFrame(news_rows,
-        columns=["Headline","Impact","Time (IST)","Link"])
+        columns=["Headline","Impact","Time (IST)"])
 
-    st.dataframe(news_df,hide_index=True,use_container_width=True)
+    st.markdown(news_df.to_markdown(index=False),unsafe_allow_html=True)
 
 # =================================================
 # TAB 2
