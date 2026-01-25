@@ -57,9 +57,6 @@ def get_market_caps(stocks):
             pass
     return caps
 
-# =================================================
-# COLORS
-# =================================================
 def dir_color(v):
     return "color:#137333;font-weight:bold" if float(v)>0 else "color:#a50e0e;font-weight:bold"
 
@@ -70,59 +67,14 @@ def heat_color(v):
     if v<-1: return "background-color:#b71c1c;color:white"
     if v<0: return "background-color:#f4c7c3"
     return ""
+
 # =================================================
-# 📰 MARKET NEWS (CATEGORY + CLICKABLE LINKS)
+# NEWS FETCH
 # =================================================
-st.subheader("📰 Market News")
-
-news_rows=[]
-
-for n in news:
-    title = n.title
-    link  = n.link
-
-    # ---- Convert published time to IST ----
-    pub = pd.to_datetime(n.published)
-    pub = pub.tz_localize("UTC").tz_convert("Asia/Kolkata")
-    time_ist = pub.strftime("%d-%b %I:%M %p")
-
-    # ---- Category Detection ----
-    txt = title.lower()
-    if any(x in txt for x in ["india","nifty","sensex","rupee","rbi","banknifty"]):
-        category = "India"
-    else:
-        category = "Global"
-
-    # ---- Impact Detection ----
-    if any(x in txt for x in ["crash","plunge","selloff","rate hike","inflation","war","recession"]):
-        impact="High"
-    elif any(x in txt for x in ["earnings","results","growth","profit","policy","gdp"]):
-        impact="Medium"
-    else:
-        impact="Low"
-
-    news_rows.append([category, title, impact, time_ist, link])
-
-news_df = pd.DataFrame(
-    news_rows,
-    columns=["Category","Headline","Impact","Time (IST)","Link"]
-)
-
-# ---- Render as clickable HTML table ----
-def make_clickable(url, text):
-    return f'<a href="{url}" target="_blank">{text}</a>'
-
-news_df["Headline"] = news_df.apply(
-    lambda x: make_clickable(x["Link"], x["Headline"]), axis=1
-)
-
-news_df = news_df.drop(columns=["Link"])
-
-st.markdown(
-    news_df.to_html(escape=False, index=False),
-    unsafe_allow_html=True
-)
-
+@st.cache_data(ttl=900)
+def fetch_news():
+    url="https://news.google.com/rss/search?q=india+stock+market"
+    return feedparser.parse(url).entries[:12]
 
 # =================================================
 # SYMBOL GROUPS
@@ -242,7 +194,7 @@ with tab1:
     with c3:
         market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
 
-    # ===== HEATMAP SECTION =====
+    # ===== HEATMAP =====
     st.subheader("🔥 Heatmap")
 
     idx_sel=st.radio("Select Index",["NIFTY 50","NIFTY NEXT 50"],horizontal=True)
@@ -271,34 +223,51 @@ with tab1:
     st.dataframe(hdf.style.applymap(heat_color,subset=["%"]),
                  hide_index=True,use_container_width=True)
 
-    # ===== NEWS TABLE =====
+    # =================================================
+    # 📰 MARKET NEWS (FIXED)
+    # =================================================
     st.subheader("📰 Market News")
 
     news_rows=[]
+
     for n in news:
         title=n.title
         link=n.link
-        pub=pd.to_datetime(n.published).tz_localize("UTC").tz_convert("Asia/Kolkata")
+
+        pub=pd.to_datetime(n.published)
+        pub=pub.tz_localize("UTC").tz_convert("Asia/Kolkata")
         time=pub.strftime("%d-%b %I:%M %p")
 
-        t=title.lower()
-        if any(x in t for x in ["crash","selloff","plunge","rate hike","inflation","war"]):
+        txt=title.lower()
+        if any(x in txt for x in ["india","nifty","sensex","rbi","rupee","banknifty"]):
+            category="India"
+        else:
+            category="Global"
+
+        if any(x in txt for x in ["crash","plunge","selloff","rate hike","inflation","war","recession"]):
             impact="High"
-        elif any(x in t for x in ["earnings","results","growth","profit","policy"]):
+        elif any(x in txt for x in ["earnings","results","growth","profit","policy","gdp"]):
             impact="Medium"
         else:
             impact="Low"
 
-        news_rows.append([
-            f"[{title}]({link})",
-            impact,
-            time
-        ])
+        news_rows.append([category,title,impact,time,link])
 
     news_df=pd.DataFrame(news_rows,
-        columns=["Headline","Impact","Time (IST)"])
+        columns=["Category","Headline","Impact","Time (IST)","Link"]
+    )
 
-    st.dataframe(news_df, hide_index=True, use_container_width=True)
+    def make_clickable(url,text):
+        return f'<a href="{url}" target="_blank">{text}</a>'
+
+    news_df["Headline"]=news_df.apply(
+        lambda x: make_clickable(x["Link"],x["Headline"]),axis=1
+    )
+
+    news_df=news_df.drop(columns=["Link"])
+
+    st.markdown(news_df.to_html(escape=False,index=False),
+                unsafe_allow_html=True)
 
 # =================================================
 # TAB 2
