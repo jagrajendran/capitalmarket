@@ -5,6 +5,7 @@ import os
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import feedparser
 from datetime import datetime
 import pytz
 
@@ -35,16 +36,12 @@ def fetch_batch(symbols):
 
 def extract_price(data, sym):
     try:
-        df = data[sym]
-        close = df["Close"].dropna()
-        if len(close) < 2:
-            return None
-
-        prev = round(float(close.iloc[-2]), 2)
-        curr = round(float(close.iloc[-1]), 2)
-        pct  = round(((curr / prev) - 1) * 100, 2)
-
-        return prev, curr, pct
+        df=data[sym]
+        close=df["Close"].dropna()
+        prev=round(float(close.iloc[-2]),2)
+        curr=round(float(close.iloc[-1]),2)
+        pct =round(((curr/prev)-1)*100,2)
+        return prev,curr,pct
     except:
         return None
 
@@ -53,15 +50,15 @@ def get_market_caps(stocks):
     caps={}
     for s in stocks:
         try:
-            mc = yf.Ticker(f"{s}.NS").fast_info.get("marketCap")
+            mc=yf.Ticker(f"{s}.NS").fast_info.get("marketCap")
             if mc:
-                caps[s]=mc/1e7   # ₹ Cr
+                caps[s]=mc/1e7
         except:
             pass
     return caps
 
 # =================================================
-# COLOR FUNCTIONS
+# COLORS
 # =================================================
 def dir_color(v):
     return "color:#137333;font-weight:bold" if float(v)>0 else "color:#a50e0e;font-weight:bold"
@@ -75,30 +72,32 @@ def heat_color(v):
     return ""
 
 # =================================================
+# NEWS
+# =================================================
+@st.cache_data(ttl=900)
+def fetch_news():
+    url="https://news.google.com/rss/search?q=stock+market+india"
+    feed=feedparser.parse(url)
+    return feed.entries[:10]
+
+# =================================================
 # SYMBOL GROUPS
 # =================================================
-GLOBAL={
-"S&P500":"^GSPC","NASDAQ":"^IXIC","DOW":"^DJI",
-"NIKKEI":"^N225","HANG SENG":"^HSI","DAX":"^GDAXI","FTSE":"^FTSE"
-}
+GLOBAL={"S&P500":"^GSPC","NASDAQ":"^IXIC","DOW":"^DJI",
+"NIKKEI":"^N225","HANG SENG":"^HSI","DAX":"^GDAXI","FTSE":"^FTSE"}
 
-INDIA={
-"GIFT NIFTY":"^NIFTY_GIFT","NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK",
-"SENSEX":"^BSESN","VIX":"^INDIAVIX","USDINR":"USDINR=X"
-}
+INDIA={"GIFT NIFTY":"^NIFTY_GIFT","NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK",
+"SENSEX":"^BSESN","VIX":"^INDIAVIX","USDINR":"USDINR=X"}
 
-BONDS_COMMODITIES={
-"US10Y":"^TNX","GOLD":"GC=F","SILVER":"SI=F",
-"CRUDE":"CL=F","COPPER":"HG=F"
-}
+BONDS_COMMODITIES={"US10Y":"^TNX","GOLD":"GC=F","SILVER":"SI=F",
+"CRUDE":"CL=F","COPPER":"HG=F"}
 
 NIFTY_50=[
-"ADANIENT","ADANIPORTS","APOLLOHOSP","ASIANPAINT","AXISBANK",
-"BAJAJ-AUTO","BAJFINANCE","BAJAJFINSV","BPCL","BHARTIARTL",
-"BRITANNIA","CIPLA","COALINDIA","DIVISLAB","DRREDDY","EICHERMOT",
-"GRASIM","HCLTECH","HDFCBANK","HDFCLIFE","HEROMOTOCO","HINDALCO",
-"HINDUNILVR","ICICIBANK","ITC","INDUSINDBK","INFY","JSWSTEEL",
-"KOTAKBANK","LT","LTIM","M&M","MARUTI","NESTLEIND","NTPC","ONGC",
+"ADANIENT","ADANIPORTS","APOLLOHOSP","ASIANPAINT","AXISBANK","BAJAJ-AUTO",
+"BAJFINANCE","BAJAJFINSV","BPCL","BHARTIARTL","BRITANNIA","CIPLA","COALINDIA",
+"DIVISLAB","DRREDDY","EICHERMOT","GRASIM","HCLTECH","HDFCBANK","HDFCLIFE",
+"HEROMOTOCO","HINDALCO","HINDUNILVR","ICICIBANK","ITC","INDUSINDBK","INFY",
+"JSWSTEEL","KOTAKBANK","LT","LTIM","M&M","MARUTI","NESTLEIND","NTPC","ONGC",
 "POWERGRID","RELIANCE","SBIN","SUNPHARMA","TATACONSUM","TATAMOTORS",
 "TATASTEEL","TECHM","TITAN","ULTRACEMCO","UPL","WIPRO"
 ]
@@ -111,6 +110,20 @@ market_data=fetch_batch({
 **{s:f"{s}.NS" for s in NIFTY_50}
 })
 
+news=fetch_news()
+
+# =================================================
+# MARKET MOOD
+# =================================================
+pos=neg=0
+for s in ["^NSEI","^NSEBANK","^BSESN"]:
+    v=extract_price(market_data,s)
+    if v:
+        if v[2]>0: pos+=1
+        else: neg+=1
+
+mood="BULLISH 🟢" if pos>neg else "BEARISH 🔴"
+
 # =================================================
 # TABS
 # =================================================
@@ -121,48 +134,32 @@ tab1,tab2=st.tabs(["📊 Dashboard","📈 Options OI"])
 # =================================================
 with tab1:
 
+    # ===== Market Mood =====
+    st.subheader("😊 Market Mood")
+    st.success(mood) if "BULLISH" in mood else st.error(mood)
+
+    # ===== Horizontal Markets =====
     c1,c2,c3=st.columns(3)
 
-    # ---------- GLOBAL ----------
+    def market_table(title,data_dict):
+        rows=[]
+        for k,s in data_dict.items():
+            v=extract_price(market_data,s)
+            if v: rows.append([k,f"{v[0]:.2f}",f"{v[1]:.2f}",f"{v[2]:.2f}"])
+        df=pd.DataFrame(rows,columns=["Market","Prev","Price","%"])
+        st.subheader(title)
+        st.dataframe(df.style.applymap(dir_color,subset=["%"]),
+                     hide_index=True,use_container_width=True)
+
     with c1:
-        st.subheader("🌍 Global Markets")
-        rows=[]
-        for k,s in GLOBAL.items():
-            v=extract_price(market_data,s)
-            if v: rows.append([k,v[0],v[1],v[2]])
-        df=pd.DataFrame(rows,columns=["Market","Prev Close","Price","%"])
-        df["%"]=df["%"].map("{:.2f}".format)
-        st.dataframe(df.style.applymap(dir_color,subset=["%"]),
-                     hide_index=True,use_container_width=True)
-
-    # ---------- INDIA ----------
+        market_table("🌍 Global Markets",GLOBAL)
     with c2:
-        st.subheader("🇮🇳 India Markets")
-        rows=[]
-        for k,s in INDIA.items():
-            v=extract_price(market_data,s)
-            if v: rows.append([k,v[0],v[1],v[2]])
-        df=pd.DataFrame(rows,columns=["Market","Prev Close","Price","%"])
-        df["%"]=df["%"].map("{:.2f}".format)
-        st.dataframe(df.style.applymap(dir_color,subset=["%"]),
-                     hide_index=True,use_container_width=True)
-
-    # ---------- BONDS ----------
+        market_table("🇮🇳 India Markets",INDIA)
     with c3:
-        st.subheader("💰 Bonds & Commodities")
-        rows=[]
-        for k,s in BONDS_COMMODITIES.items():
-            v=extract_price(market_data,s)
-            if v: rows.append([k,v[0],v[1],v[2]])
-        df=pd.DataFrame(rows,columns=["Asset","Prev Close","Price","%"])
-        df["%"]=df["%"].map("{:.2f}".format)
-        st.dataframe(df.style.applymap(dir_color,subset=["%"]),
-                     hide_index=True,use_container_width=True)
+        market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
 
-    # =================================================
-    # 🔥 HEATMAP
-    # =================================================
-    st.subheader("🔥 NIFTY 50 Heatmap (Weight-aware)")
+    # ===== Heatmap =====
+    st.subheader("🔥 NIFTY 50 Heatmap")
 
     caps=get_market_caps(NIFTY_50)
     total=sum(caps.values())
@@ -171,31 +168,32 @@ with tab1:
     for s in NIFTY_50:
         v=extract_price(market_data,f"{s}.NS")
         if v and s in caps:
-            wt=round((caps[s]/total)*100,2)
-            rows.append([s,v[2],round(caps[s],0),wt])
+            wt=(caps[s]/total)*100
+            rows.append([s,f"{v[2]:.2f}",round(caps[s],0),f"{wt:.2f}"])
             adv+=v[2]>0
             dec+=v[2]<0
             neu+=v[2]==0
 
-    m1,m2,m3=st.columns(3)
-    m1.metric("Advances",adv)
-    m2.metric("Declines",dec)
-    m3.metric("Neutral",neu)
+    a,b,c=st.columns(3)
+    a.metric("Advances",adv)
+    b.metric("Declines",dec)
+    c.metric("Neutral",neu)
 
     hdf=pd.DataFrame(rows,columns=["Stock","%","MCap ₹Cr","Weight %"])
-    hdf["%"]=hdf["%"].map("{:.2f}".format)
+    st.dataframe(hdf.style.applymap(heat_color,subset=["%"]),
+                 hide_index=True,use_container_width=True)
 
-    st.dataframe(
-        hdf.style.applymap(heat_color,subset=["%"]),
-        hide_index=True,use_container_width=True
-    )
+    # ===== NEWS =====
+    st.subheader("📰 Market News")
+    for n in news:
+        st.markdown(f"- [{n.title}]({n.link})")
 
 # =================================================
 # TAB 2
 # =================================================
 with tab2:
     st.subheader("📈 NIFTY Options – FREE (Levels Only)")
-    st.info("Option chain may be unavailable on free data")
+    st.info("Option chain may be unavailable due to free data limits")
 
 # =================================================
 st.caption("📌 Educational only. Not investment advice.")
