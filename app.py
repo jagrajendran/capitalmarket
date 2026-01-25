@@ -76,9 +76,8 @@ def heat_color(v):
 # =================================================
 @st.cache_data(ttl=900)
 def fetch_news():
-    url="https://news.google.com/rss/search?q=stock+market+india"
-    feed=feedparser.parse(url)
-    return feed.entries[:10]
+    url="https://news.google.com/rss/search?q=india+stock+market"
+    return feedparser.parse(url).entries[:12]
 
 # =================================================
 # SYMBOL GROUPS
@@ -113,16 +112,41 @@ market_data=fetch_batch({
 news=fetch_news()
 
 # =================================================
-# MARKET MOOD
+# MARKET MOOD LOGIC + REASONS
 # =================================================
+signals=[]
 pos=neg=0
-for s in ["^NSEI","^NSEBANK","^BSESN"]:
-    v=extract_price(market_data,s)
+
+def check_index(name):
+    v=extract_price(market_data,name)
+    if v:
+        if v[2]>0:
+            return f"{name} up {v[2]:.2f}%"
+        else:
+            return f"{name} down {v[2]:.2f}%"
+
+for idx in ["^NSEI","^NSEBANK","^BSESN"]:
+    v=extract_price(market_data,idx)
     if v:
         if v[2]>0: pos+=1
         else: neg+=1
+        signals.append(check_index(idx))
 
-mood="BULLISH 🟢" if pos>neg else "BEARISH 🔴"
+vix=extract_price(market_data,"^INDIAVIX")
+if vix:
+    if vix[2]<0:
+        signals.append("India VIX falling (risk appetite improving)")
+        pos+=1
+    else:
+        signals.append("India VIX rising (risk-off)")
+        neg+=1
+
+if pos>neg:
+    mood="BULLISH 🟢"
+elif neg>pos:
+    mood="BEARISH 🔴"
+else:
+    mood="NEUTRAL ⚪"
 
 # =================================================
 # TABS
@@ -134,18 +158,29 @@ tab1,tab2=st.tabs(["📊 Dashboard","📈 Options OI"])
 # =================================================
 with tab1:
 
-    # ===== Market Mood =====
+    # ===== MARKET MOOD =====
     st.subheader("😊 Market Mood")
-    st.success(mood) if "BULLISH" in mood else st.error(mood)
 
-    # ===== Horizontal Markets =====
+    if "BULLISH" in mood:
+        st.success(f"Overall Market Mood: {mood}")
+    elif "BEARISH" in mood:
+        st.error(f"Overall Market Mood: {mood}")
+    else:
+        st.warning(f"Overall Market Mood: {mood}")
+
+    st.markdown("**Reasons:**")
+    for s in signals:
+        st.write(f"• {s}")
+
+    # ===== HORIZONTAL MARKETS =====
     c1,c2,c3=st.columns(3)
 
     def market_table(title,data_dict):
         rows=[]
         for k,s in data_dict.items():
             v=extract_price(market_data,s)
-            if v: rows.append([k,f"{v[0]:.2f}",f"{v[1]:.2f}",f"{v[2]:.2f}"])
+            if v:
+                rows.append([k,f"{v[0]:.2f}",f"{v[1]:.2f}",f"{v[2]:.2f}"])
         df=pd.DataFrame(rows,columns=["Market","Prev","Price","%"])
         st.subheader(title)
         st.dataframe(df.style.applymap(dir_color,subset=["%"]),
@@ -158,7 +193,7 @@ with tab1:
     with c3:
         market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
 
-    # ===== Heatmap =====
+    # ===== HEATMAP =====
     st.subheader("🔥 NIFTY 50 Heatmap")
 
     caps=get_market_caps(NIFTY_50)
@@ -183,17 +218,37 @@ with tab1:
     st.dataframe(hdf.style.applymap(heat_color,subset=["%"]),
                  hide_index=True,use_container_width=True)
 
-    # ===== NEWS =====
+    # ===== NEWS TABLE =====
     st.subheader("📰 Market News")
+
+    news_rows=[]
     for n in news:
-        st.markdown(f"- [{n.title}]({n.link})")
+        title=n.title
+        link=n.link
+        pub=pd.to_datetime(n.published).tz_localize("UTC").tz_convert("Asia/Kolkata")
+        time=pub.strftime("%d-%b %I:%M %p")
+
+        t=title.lower()
+        if any(x in t for x in ["crash","selloff","plunge","rate hike","inflation","war"]):
+            impact="High"
+        elif any(x in t for x in ["earnings","results","growth","profit","policy"]):
+            impact="Medium"
+        else:
+            impact="Low"
+
+        news_rows.append([title,impact,time,link])
+
+    news_df=pd.DataFrame(news_rows,
+        columns=["Headline","Impact","Time (IST)","Link"])
+
+    st.dataframe(news_df,hide_index=True,use_container_width=True)
 
 # =================================================
 # TAB 2
 # =================================================
 with tab2:
     st.subheader("📈 NIFTY Options – FREE (Levels Only)")
-    st.info("Option chain may be unavailable due to free data limits")
+    st.info("Option chain may be unavailable on free data")
 
 # =================================================
 st.caption("📌 Educational only. Not investment advice.")
