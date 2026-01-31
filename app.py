@@ -36,12 +36,13 @@ def fetch_batch(symbols):
 
 def extract_price(data, sym):
     try:
-        df=data[sym]
-        close=df["Close"].dropna()
-        prev=round(float(close.iloc[-2]),2)
-        curr=round(float(close.iloc[-1]),2)
-        pct =round(((curr/prev)-1)*100,2)
-        return prev,curr,pct
+        df = data[sym]
+        close = df["Close"].dropna()
+        prev = round(float(close.iloc[-2]),2)
+        curr = round(float(close.iloc[-1]),2)
+        chg  = round(curr-prev,2)
+        pct  = round(((curr/prev)-1)*100,2)
+        return prev,curr,chg,pct
     except:
         return None
 
@@ -58,6 +59,9 @@ def get_market_caps(stocks):
     return caps
 
 def dir_color(v):
+    return "color:#137333;font-weight:bold" if float(v)>0 else "color:#a50e0e;font-weight:bold"
+
+def change_color(v):
     return "color:#137333;font-weight:bold" if float(v)>0 else "color:#a50e0e;font-weight:bold"
 
 def heat_color(v):
@@ -86,16 +90,10 @@ INDIA={"GIFT NIFTY":"^NIFTY_GIFT","NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK",
 "SENSEX":"^BSESN","VIX":"^INDIAVIX","USDINR":"USDINR=X"}
 
 SECTORS={
-"NIFTY AUTO":"^CNXAUTO",
-"NIFTY BANK":"^NSEBANK",
-"NIFTY IT":"^CNXIT",
-"NIFTY FMCG":"^CNXFMCG",
-"NIFTY METAL":"^CNXMETAL",
-"NIFTY PHARMA":"^CNXPHARMA",
-"NIFTY PSU BANK":"^CNXPSUBANK",
-"NIFTY REALTY":"^CNXREALTY",
-"NIFTY MEDIA":"^CNXMEDIA",
-"NIFTY ENERGY":"^CNXENERGY"
+"NIFTY AUTO":"^CNXAUTO","NIFTY BANK":"^NSEBANK","NIFTY IT":"^CNXIT",
+"NIFTY FMCG":"^CNXFMCG","NIFTY METAL":"^CNXMETAL","NIFTY PHARMA":"^CNXPHARMA",
+"NIFTY PSU BANK":"^CNXPSUBANK","NIFTY REALTY":"^CNXREALTY",
+"NIFTY MEDIA":"^CNXMEDIA","NIFTY ENERGY":"^CNXENERGY"
 }
 
 CAP_INDICES={
@@ -146,28 +144,23 @@ reasons=[]
 for idx in ["^NSEI","^NSEBANK","^BSESN"]:
     v=extract_price(market_data,idx)
     if v:
-        if v[2]>0:
+        if v[3]>0:
             pos+=1
-            reasons.append(f"{idx} up {v[2]:.2f}%")
+            reasons.append(f"{idx} up {v[3]:.2f}%")
         else:
             neg+=1
-            reasons.append(f"{idx} down {v[2]:.2f}%")
+            reasons.append(f"{idx} down {v[3]:.2f}%")
 
 vix=extract_price(market_data,"^INDIAVIX")
 if vix:
-    if vix[2]<0:
+    if vix[3]<0:
         pos+=1
         reasons.append("India VIX falling (risk-on)")
     else:
         neg+=1
         reasons.append("India VIX rising (risk-off)")
 
-if pos>neg:
-    mood="BULLISH 🟢"
-elif neg>pos:
-    mood="BEARISH 🔴"
-else:
-    mood="NEUTRAL ⚪"
+mood="BULLISH 🟢" if pos>neg else "BEARISH 🔴" if neg>pos else "NEUTRAL ⚪"
 
 # =================================================
 # TABS
@@ -179,68 +172,51 @@ tab1,tab2=st.tabs(["📊 Dashboard","📈 Options OI"])
 # =================================================
 with tab1:
 
-    # ===== MARKET MOOD =====
     st.subheader("😊 Market Mood")
-
-    if "BULLISH" in mood:
-        st.success(f"Overall Mood: {mood}")
-    elif "BEARISH" in mood:
-        st.error(f"Overall Mood: {mood}")
-    else:
-        st.warning(f"Overall Mood: {mood}")
+    st.success(f"Overall Mood: {mood}") if "BULLISH" in mood else st.error(f"Overall Mood: {mood}") if "BEARISH" in mood else st.warning(f"Overall Mood: {mood}")
 
     st.markdown("**Reasons:**")
-    for r in reasons:
-        st.write(f"• {r}")
-
-    # =========================
-    # ROW 1 : Global | India | Bonds
-    # =========================
-    r1c1,r1c2,r1c3=st.columns(3)
+    for r in reasons: st.write(f"• {r}")
 
     def market_table(title,data_dict):
         rows=[]
         for k,s in data_dict.items():
             v=extract_price(market_data,s)
             if v:
-                rows.append([k,f"{v[0]:.2f}",f"{v[1]:.2f}",f"{v[2]:.2f}"])
-        df=pd.DataFrame(rows,columns=["Market","Prev","Price","%"])
+                rows.append([k,v[0],v[1],v[2],v[3]])
+        df=pd.DataFrame(rows,columns=["Market","Prev","Price","Change","%"])
         st.subheader(title)
-        st.dataframe(df.style.applymap(dir_color,subset=["%"]),
+        st.dataframe(df.style.applymap(change_color,subset=["Change"])
+                              .applymap(dir_color,subset=["%"]),
                      hide_index=True,use_container_width=True)
 
-    with r1c1:
-        market_table("🌍 Global Markets",GLOBAL)
-    with r1c2:
-        market_table("🇮🇳 India Markets",INDIA)
-    with r1c3:
-        market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
+    r1c1,r1c2,r1c3=st.columns(3)
+    with r1c1: market_table("🌍 Global Markets",GLOBAL)
+    with r1c2: market_table("🇮🇳 India Markets",INDIA)
+    with r1c3: market_table("💰 Bonds & Commodities",BONDS_COMMODITIES)
 
-    # =========================
-    # ROW 2 : Sector | Market Cap
-    # =========================
     r2c1,r2c2=st.columns(2)
 
     with r2c1:
-        st.subheader("🏭 Sector Performance")
         rows=[]
         for k,s in SECTORS.items():
             v=extract_price(market_data,s)
-            if v:
-                rows.append([k,f"{v[0]:.2f}",f"{v[1]:.2f}",f"{v[2]:.2f}"])
-        sdf=pd.DataFrame(rows,columns=["Sector","Prev","Price","%"])
-        st.dataframe(sdf.style.applymap(dir_color,subset=["%"]),
+            if v: rows.append([k,v[0],v[1],v[2],v[3]])
+        sdf=pd.DataFrame(rows,columns=["Sector","Prev","Price","Change","%"])
+        st.subheader("🏭 Sector Performance")
+        st.dataframe(sdf.style.applymap(change_color,subset=["Change"])
+                             .applymap(dir_color,subset=["%"]),
                      hide_index=True,use_container_width=True)
 
     with r2c2:
-        st.subheader("📦 Market Cap Performance")
         rows=[]
         for k,s in CAP_INDICES.items():
             v=extract_price(market_data,s)
-            if v:
-                rows.append([k,f"{v[0]:.2f}",f"{v[1]:.2f}",f"{v[2]:.2f}"])
-        cdf=pd.DataFrame(rows,columns=["Category","Prev","Price","%"])
-        st.dataframe(cdf.style.applymap(dir_color,subset=["%"]),
+            if v: rows.append([k,v[0],v[1],v[2],v[3]])
+        cdf=pd.DataFrame(rows,columns=["Category","Prev","Price","Change","%"])
+        st.subheader("📦 Market Cap Performance")
+        st.dataframe(cdf.style.applymap(change_color,subset=["Change"])
+                             .applymap(dir_color,subset=["%"]),
                      hide_index=True,use_container_width=True)
 
     # =========================
@@ -249,7 +225,6 @@ with tab1:
     st.subheader("🔥 Heatmap")
 
     idx_sel=st.radio("Select Index",["NIFTY 50","NIFTY NEXT 50"],horizontal=True)
-
     stocks=NIFTY_50 if idx_sel=="NIFTY 50" else NIFTY_NEXT_50
 
     caps=get_market_caps(stocks)
@@ -260,18 +235,19 @@ with tab1:
         v=extract_price(market_data,f"{s}.NS")
         if v and s in caps:
             wt=round((caps[s]/total)*100,2)
-            rows.append([s,f"{v[2]:.2f}",round(caps[s],0),f"{wt:.2f}"])
-            adv+=v[2]>0
-            dec+=v[2]<0
-            neu+=v[2]==0
+            rows.append([s,v[2],v[3],round(caps[s],0),wt])
+            adv+=v[3]>0
+            dec+=v[3]<0
+            neu+=v[3]==0
 
     a,b,c=st.columns(3)
     a.metric("Advances",adv)
     b.metric("Declines",dec)
     c.metric("Neutral",neu)
 
-    hdf=pd.DataFrame(rows,columns=["Stock","%","MCap ₹Cr","Weight %"])
-    st.dataframe(hdf.style.applymap(heat_color,subset=["%"]),
+    hdf=pd.DataFrame(rows,columns=["Stock","Change","%","MCap ₹Cr","Weight %"])
+    st.dataframe(hdf.style.applymap(change_color,subset=["Change"])
+                         .applymap(heat_color,subset=["%"]),
                  hide_index=True,use_container_width=True)
 
     # =========================
@@ -281,41 +257,19 @@ with tab1:
 
     news_rows=[]
     for n in news:
-        title=n.title
-        link=n.link
-
-        pub=pd.to_datetime(n.published)
-        pub=pub.tz_localize("UTC").tz_convert("Asia/Kolkata")
+        pub=pd.to_datetime(n.published).tz_localize("UTC").tz_convert("Asia/Kolkata")
         time=pub.strftime("%d-%b %I:%M %p")
-
-        txt=title.lower()
-        if any(x in txt for x in ["india","nifty","sensex","rbi","rupee","banknifty"]):
-            category="India"
-        else:
-            category="Global"
-
-        if any(x in txt for x in ["crash","plunge","selloff","rate hike","inflation","war","recession"]):
-            impact="High"
-        elif any(x in txt for x in ["earnings","results","growth","profit","policy","gdp"]):
-            impact="Medium"
-        else:
-            impact="Low"
-
-        news_rows.append([category,title,impact,time,link])
+        news_rows.append(["India" if "india" in n.title.lower() else "Global",
+                          n.title,"Medium",time,n.link])
 
     news_df=pd.DataFrame(news_rows,
         columns=["Category","Headline","Impact","Time (IST)","Link"]
     )
 
-    def make_clickable(url,text):
-        return f'<a href="{url}" target="_blank">{text}</a>'
-
     news_df["Headline"]=news_df.apply(
-        lambda x: make_clickable(x["Link"],x["Headline"]),axis=1
+        lambda x:f'<a href="{x["Link"]}" target="_blank">{x["Headline"]}</a>',axis=1
     )
-
     news_df=news_df.drop(columns=["Link"])
-
     st.markdown(news_df.to_html(escape=False,index=False),
                 unsafe_allow_html=True)
 
@@ -326,5 +280,4 @@ with tab2:
     st.subheader("📈 NIFTY Options – FREE (Levels Only)")
     st.info("Option chain may be unavailable on free data")
 
-# =================================================
 st.caption("📌 Educational only. Not investment advice.")
